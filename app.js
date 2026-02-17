@@ -3,6 +3,11 @@
  * - Rich list: account_lines (issuer) via WebSocket
  * - Live feed: subscribe stream via WebSocket
  * - BUY/SELL: computed from trustline deltas in transaction meta (RippleState)
+ * - Price (XAH): computed from AccountRoot balance deltas in meta (drops → XAH)
+ *
+ * Lightweight:
+ * - No extra network calls
+ * - Feed capped + only processes tx that touch your token
  ******************************************************************/
 
 /* ===== DOM ===== */
@@ -55,7 +60,7 @@ function rand(min, max){ return Math.random() * (max - min) + min; }
 function spawnEmoji(){
   const el = document.createElement("div");
   el.className = "emoji";
-  el.textContent = "💯";
+  el.textContent = "💯"; // brand vibe (leave as 💯 even for later tokens)
   el.style.left = rand(0, 100) + "vw";
   el.style.top = rand(30, 120) + "vh";
   el.style.fontSize = rand(14, 28) + "px";
@@ -84,9 +89,13 @@ let activeToken = TOKENS[0] || null;
 let activeFilter = "all";
 let allHolders = [];
 
-// feed WS state
+// Feed WS state
 let feedWS = null;
 let feedEvents = []; // newest first
+
+// Feed limits (keep mobile light)
+const FEED_RENDER_LIMIT = 20;
+const FEED_STORE_LIMIT = 60;
 
 /* ===== Utils ===== */
 function shortAddr(a){
@@ -97,6 +106,10 @@ function shortAddr(a){
 function fmt(n){
   const isInt = Math.abs(n - Math.round(n)) < 1e-9;
   return isInt ? String(Math.round(n)) : n.toFixed(4).replace(/0+$/,'').replace(/\.$/,'');
+}
+function fmtPrice(n){
+  // dynamic-ish but cheap: show up to 6 decimals, trim trailing zeros
+  return Number(n).toFixed(6).replace(/0+$/,'').replace(/\.$/,'');
 }
 function pctOfSupply(balance){
   return (balance / activeToken.totalSupply) * 100;
@@ -134,7 +147,7 @@ function badgesFor(holder){
   if (holder.rank === 1) b.push(makeBadge("Top Holder", "gold", "🥇"));
   if (holder.rank === 2) b.push(makeBadge("Runner Up", "silver", "🥈"));
   if (holder.rank === 3) b.push(makeBadge("Third Place", "bronze", "🥉"));
-  if (holder.isLast) b.push(makeBadge(`Last Holder`, "red", "❤️"));
+  if (holder.isLast) b.push(makeBadge("Last Holder", "red", "❤️"));
 
   for (const tier of (activeToken.clubTiers || [])){
     if (holder.balance >= tier.min) b.push(makeBadge(tier.name, tier.min >= 10 ? "dark" : "club", tier.icon));
@@ -328,42 +341,12 @@ function computeStats(){
 
 function renderBadgeCards(holders){
   const rules = [
-    {
-      title: "Genesis Member",
-      icon: "🟢",
-      rule: `Hold ≥ 1 ${activeToken.symbol}`,
-      qualifies: holders.filter(h => h.balance >= 1).length
-    },
-    {
-      title: "Exact One",
-      icon: "🎯",
-      rule: `Hold exactly 1.0000`,
-      qualifies: holders.filter(h => Math.abs(h.balance - 1) < 1e-9).length
-    },
-    {
-      title: "Top 3",
-      icon: "🥇",
-      rule: `Be in the top 3 wallets`,
-      qualifies: Math.min(3, holders.length)
-    },
-    {
-      title: `Bottom Guardian`,
-      icon: "❤️",
-      rule: `Hold the last rank`,
-      qualifies: holders.length ? 1 : 0
-    },
-    {
-      title: "Council",
-      icon: "🖤",
-      rule: `Hold ≥ 10`,
-      qualifies: holders.filter(h => h.balance >= 10).length
-    },
-    {
-      title: "Whale",
-      icon: "🐋",
-      rule: `Hold ≥ 5`,
-      qualifies: holders.filter(h => h.balance >= 5).length
-    }
+    { title: "Genesis Member", icon: "🟢", rule: `Hold ≥ 1 ${activeToken.symbol}`, qualifies: holders.filter(h => h.balance >= 1).length },
+    { title: "Exact One", icon: "🎯", rule: `Hold exactly 1.0000`, qualifies: holders.filter(h => Math.abs(h.balance - 1) < 1e-9).length },
+    { title: "Top 3", icon: "🥇", rule: `Be in the top 3 wallets`, qualifies: Math.min(3, holders.length) },
+    { title: "Bottom Guardian", icon: "❤️", rule: `Hold the last rank`, qualifies: holders.length ? 1 : 0 },
+    { title: "Council", icon: "🖤", rule: `Hold ≥ 10`, qualifies: holders.filter(h => h.balance >= 10).length },
+    { title: "Whale", icon: "🐋", rule: `Hold ≥ 5`, qualifies: holders.filter(h => h.balance >= 5).length },
   ];
 
   badgeMeta.textContent = holders.length ? `${rules.length} badges live` : "—";
@@ -417,7 +400,7 @@ async function fetchHoldersFromWS({ wsUrl, issuer, currency, limitPerPage=400 })
 
   try{
     let marker = undefined;
-    const holdersMap = new Map(); // address -> balance
+    const holdersMap = new Map();
 
     while (true){
       const req = {
@@ -437,7 +420,7 @@ async function fetchHoldersFromWS({ wsUrl, issuer, currency, limitPerPage=400 })
         const holder = line.account;
         const issuerPerspectiveBal = Number(line.balance);
 
-        // issuer view is usually negative when holders own the token
+        // issuer view is usually negative when others hold the token
         const holderBal = Math.max(0, -issuerPerspectiveBal);
 
         if (holder && holderBal > 0){
@@ -483,15 +466,15 @@ async function loadHolders(){
   computeStats();
 }
 
-/* ===== BUY/SELL feed via meta trustline deltas ===== */
+/* ===== BUY/SELL + Price feed via meta deltas ===== */
 function getMeta(msg){ return msg?.meta || msg?.metaData || msg?.result?.meta || null; }
 function getTx(msg){ return msg?.transaction || msg?.tx || msg?.result?.transaction || msg; }
 
 /**
- * Extract token deltas per account from tx meta (RippleState changes).
- * Returns [{account, delta}] where delta is in token units from holder POV.
+ * Token deltas from RippleState entries.
+ * Returns [{account, delta}] where delta is holder-token change.
  *
- * RippleState balance rules:
+ * RippleState rules:
  * - Balance is from LOW node perspective.
  * - If holder is LowLimit.issuer => holding = Balance.value
  * - If holder is HighLimit.issuer => holding = -Balance.value
@@ -501,7 +484,6 @@ function extractTokenDeltasFromMeta(msg, token){
   if (!meta?.AffectedNodes) return [];
 
   const out = new Map();
-
   const addDelta = (account, delta) => {
     if (!account || !Number.isFinite(delta) || Math.abs(delta) < 1e-12) return;
     out.set(account, (out.get(account) || 0) + delta);
@@ -517,7 +499,6 @@ function extractTokenDeltasFromMeta(msg, token){
 
     const prevBalObj = prev.Balance;
     const finBalObj = fin.Balance;
-
     if (!prevBalObj || !finBalObj) continue;
 
     if (finBalObj.currency !== token.symbol || finBalObj.issuer !== token.issuer) continue;
@@ -546,12 +527,53 @@ function extractTokenDeltasFromMeta(msg, token){
   return Array.from(out.entries()).map(([account, delta]) => ({ account, delta }));
 }
 
-function involvesTokenInMsg(msg, token){
-  const deltas = extractTokenDeltasFromMeta(msg, token);
-  return deltas.length > 0;
+/**
+ * Native deltas (XAH) from AccountRoot balance change.
+ * Returns [{account, deltaXah}] where deltaXah is in XAH.
+ */
+function extractNativeDeltasFromMeta(msg){
+  const meta = getMeta(msg);
+  if (!meta?.AffectedNodes) return [];
+
+  const out = new Map();
+  const add = (acct, delta) => {
+    if (!acct || !Number.isFinite(delta) || Math.abs(delta) < 1e-12) return;
+    out.set(acct, (out.get(acct) || 0) + delta);
+  };
+
+  for (const wrap of meta.AffectedNodes){
+    const node = wrap.ModifiedNode || wrap.CreatedNode || wrap.DeletedNode || null;
+    if (!node) continue;
+    if (node.LedgerEntryType !== "AccountRoot") continue;
+
+    const prev = node.PreviousFields || {};
+    const fin = node.FinalFields || node.NewFields || {};
+
+    if (prev.Balance == null || fin.Balance == null) continue;
+
+    const acct = fin.Account;
+    const prevDrops = Number(prev.Balance);
+    const finDrops = Number(fin.Balance);
+    if (!Number.isFinite(prevDrops) || !Number.isFinite(finDrops)) continue;
+
+    const deltaXah = (finDrops - prevDrops) / 1_000_000;
+    add(acct, deltaXah);
+  }
+
+  return Array.from(out.entries()).map(([account, deltaXah]) => ({ account, deltaXah }));
 }
 
-function summarizeBuySell(msg, token){
+function involvesTokenInMsg(msg, token){
+  return extractTokenDeltasFromMeta(msg, token).length > 0;
+}
+
+/**
+ * Build a feed line:
+ * - BUY/SELL for offer-related activity
+ * - RECEIVE/SEND for payments
+ * - Adds implied price @ XAH when possible (light + honest)
+ */
+function summarizeBuySellWithPrice(msg, token){
   const tx = getTx(msg);
   const tt = tx?.TransactionType || "Unknown";
   const hash = tx?.hash || msg?.hash || "";
@@ -560,30 +582,49 @@ function summarizeBuySell(msg, token){
   const deltas = extractTokenDeltasFromMeta(msg, token);
   if (!deltas.length) return null;
 
+  // Main event = biggest abs delta
   deltas.sort((a,b) => Math.abs(b.delta) - Math.abs(a.delta));
   const main = deltas[0];
 
-  const amt = Math.abs(main.delta);
+  const tokenAmt = Math.abs(main.delta);
+
   const dir =
     main.delta > 0
       ? (tt === "Payment" ? "RECEIVE" : "BUY")
       : (tt === "Payment" ? "SEND" : "SELL");
 
+  // Try compute price using XAH delta for same account
+  let priceStr = "";
+  const native = extractNativeDeltasFromMeta(msg);
+  const nativeMap = new Map(native.map(x => [x.account, x.deltaXah]));
+  const xahDelta = nativeMap.get(main.account);
+
+  // Only attempt price when this looks like DEX-related activity
+  // (Payment transfers can move tokens w/out market price)
+  if (Number.isFinite(xahDelta) && tokenAmt > 0 && (tt === "OfferCreate" || tt === "OfferCancel")){
+    const xahAbs = Math.abs(xahDelta);
+    const px = xahAbs / tokenAmt;
+    if (Number.isFinite(px) && px > 0){
+      priceStr = ` • @ ${fmtPrice(px)} XAH`;
+    }
+  }
+
   return {
     type: dir,
     time: when,
     account: main.account,
-    text: `${dir} ${fmt(amt)} ${token.symbol}  •  ${tt}`,
+    text: `${dir} ${fmt(tokenAmt)} ${token.symbol}${priceStr}  •  ${tt}`,
     hash,
-    amount: amt,
-    delta: main.delta
+    amount: tokenAmt,
+    delta: main.delta,
+    xahDelta: Number.isFinite(xahDelta) ? xahDelta : null
   };
 }
 
 /* ===== Feed rendering ===== */
 function renderFeed(){
   feedList.innerHTML = "";
-  const list = feedEvents.slice(0, 20);
+  const list = feedEvents.slice(0, FEED_RENDER_LIMIT);
 
   if (!list.length){
     const empty = el("div","feedItem");
@@ -601,7 +642,10 @@ function renderFeed(){
     item.appendChild(top);
 
     const body = el("div","feedBody");
-    body.innerHTML = `Acct: <span class="feedAddr">${shortAddr(e.account)}</span>${e.hash ? ` • Hash: ${shortAddr(e.hash)}` : ""}`;
+    const xahHint = Number.isFinite(e.xahDelta)
+      ? ` • XAH Δ: ${fmt(e.xahDelta)}`
+      : "";
+    body.innerHTML = `Acct: <span class="feedAddr">${shortAddr(e.account)}</span>${e.hash ? ` • Hash: ${shortAddr(e.hash)}` : ""}${xahHint}`;
     item.appendChild(body);
 
     feedList.appendChild(item);
@@ -636,13 +680,14 @@ function startFeed(){
       const msg = JSON.parse(ev.data);
       if (msg?.type !== "transaction") return;
 
+      // Filter quickly: only process tx that actually changes token trustlines
       if (!involvesTokenInMsg(msg, activeToken)) return;
 
-      const summary = summarizeBuySell(msg, activeToken);
+      const summary = summarizeBuySellWithPrice(msg, activeToken);
       if (!summary) return;
 
       feedEvents.unshift(summary);
-      feedEvents = feedEvents.slice(0, 60);
+      if (feedEvents.length > FEED_STORE_LIMIT) feedEvents.length = FEED_STORE_LIMIT;
       renderFeed();
     }catch{
       // ignore
@@ -657,8 +702,8 @@ function startFeed(){
 function setPills(){
   pillRow.innerHTML = "";
   const pills = [
-    { k:"Theme", v: (activeToken.theme || "onyx") },
-    { k:"Mode", v: "Experimental → Elite" },
+    { k:"Network", v: "Xahau" },
+    { k:"Mode", v: "Experimental" },
     { k:"Genesis gate", v: "Hold ≥ 1" },
     { k:"Supply", v: String(activeToken.totalSupply) }
   ];
