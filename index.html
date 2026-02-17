@@ -1,11 +1,13 @@
+<!-- index.html -->
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>💯 100 — Onyx</title>
-  <meta name="description" content="💯 100 on Xahau — experimental DEX culture token. Only 100 exist." />
-  <link rel="stylesheet" href="styles.css" />
+  <title>Onyx — Token Hub</title>
+  <meta name="description" content="Onyx token hub — live rich lists + DEX culture experiments on Xahau." />
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="icon" href="data:," />
 </head>
 
 <body>
@@ -14,42 +16,45 @@
   <div class="wrap">
     <header>
       <div class="brand">
-        <div class="logo" title="100 on Xahau"><span class="hoverable">💯</span></div>
+        <div class="logo" title="Onyx"><span class="hoverable" id="brandEmoji">💯</span></div>
         <div class="titles">
           <div class="top">Onyx Labs</div>
-          <div class="sub">💯 100 • Xahau DEX culture token • supply: 100</div>
+          <div class="sub" id="brandSub">Loading token…</div>
         </div>
       </div>
 
-      <nav class="links">
-        <a class="btn primary" href="https://xahauexplorer.com/en/token/roneGNc3hdSwWZEr54RZceQr8Fftq6fkL/ONE" target="_blank" rel="noreferrer">
-          <span class="dot"></span> Explorer
-        </a>
-        <a class="btn" href="https://x.com/One_Xahau" target="_blank" rel="noreferrer">X (Twitter)</a>
-        <a class="btn" href="#richlist">Rich List</a>
-      </nav>
+      <div class="rightHeader">
+        <!-- Token selector (top-right) -->
+        <div class="tokenPicker">
+          <div class="tokenPickerLabel">Token</div>
+          <select id="tokenSelect" aria-label="Select token"></select>
+        </div>
+
+        <nav class="links">
+          <a class="btn primary" id="btnExplorer" href="#" target="_blank" rel="noreferrer">
+            <span class="dot"></span> Explorer
+          </a>
+          <a class="btn" id="btnX" href="#" target="_blank" rel="noreferrer">X (Twitter)</a>
+          <a class="btn" href="#richlist">Rich List</a>
+        </nav>
+      </div>
     </header>
 
     <section class="hero">
       <div class="heroGrid">
         <div>
-          <h1><span class="emojiBig hoverable">💯</span>100</h1>
-          <p>
-            A tiny-supply culture token built to make you <b>touch the DEX</b>.
-            No billions. No noise. Just <b>100</b> total — experimental trading, elite-holder flex,
-            and a friendly on-chain playground under the <b>Onyx</b> alias.
+          <h1><span class="emojiBig hoverable" id="heroEmoji">💯</span><span id="heroName">100</span></h1>
+          <p id="heroDesc">
+            Loading…
           </p>
 
-          <div class="pillRow">
-            <div class="pill">Theme: <b>DEX Culture</b></div>
-            <div class="pill">Mode: <b>Experimental</b></div>
-            <div class="pill">Badge: <b>1% Club</b> (≥ 1 token)</div>
-            <div class="pill">Supply: <b>100</b></div>
+          <div class="pillRow" id="pillRow">
+            <!-- filled by JS -->
           </div>
 
           <div class="ctaRow">
             <a class="btn primary" href="#richlist"><span class="dot"></span> View Rich List</a>
-            <a class="btn" href="https://xahauexplorer.com/en/token/roneGNc3hdSwWZEr54RZceQr8Fftq6fkL/ONE" target="_blank" rel="noreferrer">Token Details</a>
+            <a class="btn" id="btnTokenDetails" href="#" target="_blank" rel="noreferrer">Token Details</a>
           </div>
         </div>
 
@@ -59,7 +64,7 @@
             <div class="statGrid">
               <div class="stat">
                 <div class="k">Total Supply</div>
-                <div class="v">100 <small>💯</small></div>
+                <div class="v"><span id="statSupply">—</span> <small id="statEmoji">💯</small></div>
               </div>
               <div class="stat">
                 <div class="k">1% Club</div>
@@ -76,14 +81,89 @@
             </div>
           </div>
 
-          <div class="cardHint">
+          <div class="cardHint" id="cardHint">
             <b>Badges:</b> Top 3 (🥇🥈🥉), #100 holder (❤️), 1% Club (🟢), DEX Culture (🔵).
-            Hover the 💯. Everything shifts.
           </div>
         </aside>
       </div>
     </section>
 
+    <!-- EXPERIMENT PANELS -->
+    <section class="grid2">
+      <div class="panel">
+        <div class="panelHead">
+          <h2>Whale Dominance</h2>
+          <div class="meta"><span id="whaleMeta">—</span></div>
+        </div>
+        <div class="panelBody">
+          <div class="metricRow" id="whaleRow"></div>
+          <div class="miniNote">Top wallets concentration (by % of supply).</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panelHead">
+          <h2>Decentralization Score</h2>
+          <div class="meta"><span class="hoverable">🖤</span></div>
+        </div>
+        <div class="panelBody">
+          <div class="bigScore">
+            <div class="scoreNum" id="decentScore">—</div>
+            <div class="scoreSub" id="decentExplain">—</div>
+          </div>
+          <div class="barWrap">
+            <div class="barFill" id="decentBar" style="width:0%"></div>
+          </div>
+          <div class="miniNote">Simple Onyx metric: higher = more distributed.</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panelHead">
+          <h2>Supply Lock Visualizer</h2>
+          <div class="meta"><span id="supplyMeta">—</span></div>
+        </div>
+        <div class="panelBody">
+          <div class="bucketList" id="bucketList"></div>
+          <div class="miniNote">Buckets show how supply clusters across wallets.</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panelHead">
+          <h2>Challenges & Badges</h2>
+          <div class="meta"><span id="badgeMeta">—</span></div>
+        </div>
+        <div class="panelBody">
+          <div class="badgeCards" id="badgeCards"></div>
+          <div class="miniNote">
+            Later: mint these as NFT badges. For now: computed live from ledger state.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TRADE / ACTIVITY FEED -->
+    <section class="panel" id="feed">
+      <div class="panelHead">
+        <h2>Live Activity Feed</h2>
+        <div class="meta">
+          <span id="feedStatus">connecting…</span>
+          <span>•</span>
+          <span class="hoverable">📡</span>
+        </div>
+      </div>
+      <div class="panelBody">
+        <div class="feedControls">
+          <div class="miniNote">Pulled via WebSocket subscribe (no backend). Filters for this token’s currency+issuer.</div>
+          <button class="chip" id="feedReconnect">Reconnect</button>
+        </div>
+
+        <div class="feedList" id="feedList"></div>
+      </div>
+    </section>
+
+    <!-- RICHLIST -->
     <section class="panel" id="richlist">
       <div class="panelHead">
         <h2>Rich List</h2>
@@ -127,36 +207,19 @@
         <div class="foot">
           <div>
             Token:
-            <a href="https://xahauexplorer.com/en/token/roneGNc3hdSwWZEr54RZceQr8Fftq6fkL/ONE" target="_blank" rel="noreferrer">xahauexplorer</a>
+            <a id="footExplorer" href="#" target="_blank" rel="noreferrer">Explorer</a>
             • Social:
-            <a href="https://x.com/One_Xahau" target="_blank" rel="noreferrer">x.com/One_Xahau</a>
+            <a id="footX" href="#" target="_blank" rel="noreferrer">X</a>
           </div>
-          <div><span class="mono">Onyx</span> • experimental DEX culture</div>
+          <div><span class="mono">Onyx</span> • experimental → elite</div>
         </div>
-
-        <details class="devnotes">
-          <summary>Dev notes / hooking up real holder data</summary>
-          <div class="devnotesBody">
-            This site includes a real <b>fetch()</b> scaffold, but explorers vary in whether they expose a public
-            holders endpoint with CORS allowed. If fetch fails, it falls back to mock data.
-            <br /><br />
-            To go live, set <span class="mono">HOLDERS_ENDPOINT</span> in <span class="mono">app.js</span> to a JSON endpoint:
-            <pre>
-{
-  "holders": [
-    { "address": "r....", "balance": 12.34 },
-    { "address": "r....", "balance": 8 },
-    ...
-  ]
-}</pre>
-          </div>
-        </details>
       </div>
     </section>
   </div>
 
   <div id="toast"></div>
 
-  <script src="app.js"></script>
+  <script src="./tokens.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
