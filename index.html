@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>💯 100 — Onyx</title>
+  <meta name="description" content="💯 100 on Xahau — experimental DEX culture token. Only 100 exist." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <div id="emojiField" aria-hidden="true"></div>
+
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <div class="logo" title="100 on Xahau"><span class="hoverable">💯</span></div>
+        <div class="titles">
+          <div class="top">Onyx Labs</div>
+          <div class="sub">💯 100 • Xahau DEX culture token • supply: 100</div>
+        </div>
+      </div>
+
+      <nav class="links">
+        <a class="btn primary" href="https://xahauexplorer.com/en/token/roneGNc3hdSwWZEr54RZceQr8Fftq6fkL/ONE" target="_blank" rel="noreferrer">
+          <span class="dot"></span> Explorer
+        </a>
+        <a class="btn" href="https://x.com/One_Xahau" target="_blank" rel="noreferrer">X (Twitter)</a>
+        <a class="btn" href="#richlist">Rich List</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="heroGrid">
+        <div>
+          <h1><span class="emojiBig hoverable">💯</span>100</h1>
+          <p>
+            A tiny-supply culture token built to make you <b>touch the DEX</b>.
+            No billions. No noise. Just <b>100</b> total — experimental trading, elite-holder flex,
+            and a friendly on-chain playground under the <b>Onyx</b> alias.
+          </p>
+
+          <div class="pillRow">
+            <div class="pill">Theme: <b>DEX Culture</b></div>
+            <div class="pill">Mode: <b>Experimental</b></div>
+            <div class="pill">Badge: <b>1% Club</b> (≥ 1 token)</div>
+            <div class="pill">Supply: <b>100</b></div>
+          </div>
+
+          <div class="ctaRow">
+            <a class="btn primary" href="#richlist"><span class="dot"></span> View Rich List</a>
+            <a class="btn" href="https://xahauexplorer.com/en/token/roneGNc3hdSwWZEr54RZceQr8Fftq6fkL/ONE" target="_blank" rel="noreferrer">Token Details</a>
+          </div>
+        </div>
+
+        <aside class="cardRight">
+          <div>
+            <div class="accentLine"></div>
+            <div class="statGrid">
+              <div class="stat">
+                <div class="k">Total Supply</div>
+                <div class="v">100 <small>💯</small></div>
+              </div>
+              <div class="stat">
+                <div class="k">1% Club</div>
+                <div class="v"><span id="onePercentCount">—</span> <small>holders</small></div>
+              </div>
+              <div class="stat">
+                <div class="k">Top Holder</div>
+                <div class="v"><span id="topHolderPct">—</span><small>%</small></div>
+              </div>
+              <div class="stat">
+                <div class="k">Last Update</div>
+                <div class="v smallv"><span id="lastUpdate">—</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="cardHint">
+            <b>Badges:</b> Top 3 (🥇🥈🥉), #100 holder (❤️), 1% Club (🟢), DEX Culture (🔵).
+            Hover the 💯. Everything shifts.
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="panel" id="richlist">
+      <div class="panelHead">
+        <h2>Rich List</h2>
+        <div class="meta">
+          <span id="dataStatus">loading…</span>
+          <span>•</span>
+          <span class="hoverable">💯</span>
+        </div>
+      </div>
+
+      <div class="panelBody">
+        <div class="controls">
+          <div class="search">
+            <input id="search" type="search" placeholder="Search address (r...)" autocomplete="off" />
+          </div>
+
+          <div class="toggleRow">
+            <div class="chip active" data-filter="all">All</div>
+            <div class="chip" data-filter="club">1% Club</div>
+            <div class="chip" data-filter="top3">Top 3</div>
+            <div class="chip" data-filter="last">#100</div>
+            <div class="chip" id="refreshBtn">Refresh</div>
+          </div>
+        </div>
+
+        <div class="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th class="w-rank">Rank</th>
+                <th>Address</th>
+                <th class="w-bal">Balance</th>
+                <th class="w-pct">% Supply</th>
+                <th class="w-badges">Badges</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+
+        <div class="foot">
+          <div>
+            Token:
+            <a href="https://xahauexplorer.com/en/token/roneGNc3hdSwWZEr54RZceQr8Fftq6fkL/ONE" target="_blank" rel="noreferrer">xahauexplorer</a>
+            • Social:
+            <a href="https://x.com/One_Xahau" target="_blank" rel="noreferrer">x.com/One_Xahau</a>
+          </div>
+          <div><span class="mono">Onyx</span> • experimental DEX culture</div>
+        </div>
+
+        <details class="devnotes">
+          <summary>Dev notes / hooking up real holder data</summary>
+          <div class="devnotesBody">
+            This site includes a real <b>fetch()</b> scaffold, but explorers vary in whether they expose a public
+            holders endpoint with CORS allowed. If fetch fails, it falls back to mock data.
+            <br /><br />
+            To go live, set <span class="mono">HOLDERS_ENDPOINT</span> in <span class="mono">app.js</span> to a JSON endpoint:
+            <pre>
+{
+  "holders": [
+    { "address": "r....", "balance": 12.34 },
+    { "address": "r....", "balance": 8 },
+    ...
+  ]
+}</pre>
+          </div>
+        </details>
+      </div>
+    </section>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
