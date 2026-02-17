@@ -1,8 +1,8 @@
-// app.js
 /******************************************************************
  * ONYX HUB — Multi-token (no backend)
  * - Rich list: account_lines (issuer) via WebSocket
- * - Live feed: subscribe stream via WebSocket (filters tx for token)
+ * - Live feed: subscribe stream via WebSocket
+ * - BUY/SELL: computed from trustline deltas in transaction meta (RippleState)
  ******************************************************************/
 
 /* ===== DOM ===== */
@@ -122,7 +122,7 @@ function el(tag, cls, text){
   return n;
 }
 
-/* ===== Badges (holder row) ===== */
+/* ===== Holder Badges (richlist row) ===== */
 function makeBadge(label, klass, icon){
   const span = document.createElement("span");
   span.className = "badge " + (klass || "");
@@ -134,9 +134,8 @@ function badgesFor(holder){
   if (holder.rank === 1) b.push(makeBadge("Top Holder", "gold", "🥇"));
   if (holder.rank === 2) b.push(makeBadge("Runner Up", "silver", "🥈"));
   if (holder.rank === 3) b.push(makeBadge("Third Place", "bronze", "🥉"));
-  if (holder.isLast) b.push(makeBadge(`#${allHolders.length} Holder`, "red", "❤️"));
+  if (holder.isLast) b.push(makeBadge(`Last Holder`, "red", "❤️"));
 
-  // Tiered club badges
   for (const tier of (activeToken.clubTiers || [])){
     if (holder.balance >= tier.min) b.push(makeBadge(tier.name, tier.min >= 10 ? "dark" : "club", tier.icon));
   }
@@ -186,8 +185,10 @@ function filterHolders(list, q, filter){
 function renderTable(){
   const q = searchEl.value || "";
   const displayList = filterHolders(allHolders, q, activeFilter);
+
   const lastAddress = allHolders[allHolders.length - 1]?.address;
   const lastSet = new Set(lastAddress ? [lastAddress] : []);
+
   rowsEl.innerHTML = "";
 
   displayList.forEach(h => {
@@ -253,6 +254,7 @@ function computeTopN(holders, n){
 }
 function computeStats(){
   const holders = allHolders;
+
   const clubCount = holders.filter(h => h.balance >= 1).length;
   onePercentCountEl.textContent = clubCount;
 
@@ -264,7 +266,7 @@ function computeStats(){
 
   lastUpdateEl.textContent = new Date().toLocaleString();
 
-  // Whale dominance panel
+  // Whale dominance
   whaleRow.innerHTML = "";
   const ns = (activeToken.whaleTopN || [1,3,5,10]).filter(x => x > 0);
   for (const n of ns){
@@ -276,17 +278,17 @@ function computeStats(){
   }
   whaleMeta.textContent = holders.length ? `${holders.length} holders` : "—";
 
-  // Decentralization Score (simple Onyx metric)
-  // Score = clamp( 100 - (Top3% + Top10%/2) )
+  // Decentralization score (simple Onyx metric)
   const top3 = holders.length ? computeTopN(holders, 3) : 0;
   const top10 = holders.length ? computeTopN(holders, 10) : 0;
   let score = 100 - (top3 + (top10/2));
   score = Math.max(0, Math.min(100, score));
+
   decentScoreEl.textContent = holders.length ? String(Math.round(score)) : "—";
   decentExplainEl.textContent = holders.length ? `Top3 ${top3.toFixed(1)}% • Top10 ${top10.toFixed(1)}%` : "—";
   decentBar.style.width = holders.length ? `${score}%` : "0%";
 
-  // Supply lock visualizer (bucket balances)
+  // Supply buckets
   const buckets = [
     { name: "10+ tokens", min: 10, max: Infinity },
     { name: "5–9.99", min: 5, max: 9.999999 },
@@ -294,10 +296,12 @@ function computeStats(){
     { name: "0.1–0.99", min: 0.1, max: 0.999999 },
     { name: "< 0.1", min: 0.000000001, max: 0.099999 },
   ];
+
   const totals = buckets.map(b => {
     const sum = holders.reduce((acc, h) => (h.balance >= b.min && h.balance <= b.max) ? acc + h.balance : acc, 0);
     return { ...b, sum };
   });
+
   const circulating = holders.reduce((acc, h) => acc + h.balance, 0);
   supplyMeta.textContent = holders.length ? `${fmt(circulating)} / ${fmt(activeToken.totalSupply)} circulating` : "—";
 
@@ -319,43 +323,39 @@ function computeStats(){
     bucketList.appendChild(card);
   }
 
-  // Challenges & badges (counts)
   renderBadgeCards(holders);
 }
 
 function renderBadgeCards(holders){
-  const total = activeToken.totalSupply;
-  const last = holders[holders.length - 1];
-
   const rules = [
     {
       title: "Genesis Member",
       icon: "🟢",
-      rule: `Hold ≥ 1 ${activeToken.symbol} (${(1/total*100).toFixed(0)}%+)`,
+      rule: `Hold ≥ 1 ${activeToken.symbol}`,
       qualifies: holders.filter(h => h.balance >= 1).length
     },
     {
       title: "Exact One",
       icon: "🎯",
-      rule: `Hold exactly 1.0000 (legend behavior)`,
+      rule: `Hold exactly 1.0000`,
       qualifies: holders.filter(h => Math.abs(h.balance - 1) < 1e-9).length
     },
     {
       title: "Top 3",
       icon: "🥇",
-      rule: `Be in the top 3 wallets by balance`,
+      rule: `Be in the top 3 wallets`,
       qualifies: Math.min(3, holders.length)
     },
     {
       title: `Bottom Guardian`,
       icon: "❤️",
-      rule: `Hold the last rank (#${holders.length || "—"})`,
+      rule: `Hold the last rank`,
       qualifies: holders.length ? 1 : 0
     },
     {
       title: "Council",
       icon: "🖤",
-      rule: `Hold ≥ 10 (high-conviction tier)`,
+      rule: `Hold ≥ 10`,
       qualifies: holders.filter(h => h.balance >= 10).length
     },
     {
@@ -377,11 +377,6 @@ function renderBadgeCards(holders){
     card.appendChild(top);
     card.appendChild(el("div","badgeRule", r.rule));
     badgeCards.appendChild(card);
-  }
-
-  // if last exists, slightly personalize the guardian display
-  if (last && holders.length){
-    // no-op (kept simple)
   }
 }
 
@@ -438,10 +433,11 @@ async function fetchHoldersFromWS({ wsUrl, issuer, currency, limitPerPage=400 })
 
       for (const line of lines){
         if (line.currency !== currency) continue;
+
         const holder = line.account;
         const issuerPerspectiveBal = Number(line.balance);
 
-        // Issuer perspective is typically negative when others hold the IOU
+        // issuer view is usually negative when holders own the token
         const holderBal = Math.max(0, -issuerPerspectiveBal);
 
         if (holder && holderBal > 0){
@@ -478,7 +474,7 @@ async function loadHolders(){
     if (allHolders.length) allHolders[allHolders.length - 1].isLast = true;
 
     setStatus(true, "live data (ledger)");
-  }catch(e){
+  }catch{
     allHolders = normalizeHolders([]);
     setStatus(false, "failed (ws)");
   }
@@ -487,78 +483,104 @@ async function loadHolders(){
   computeStats();
 }
 
-/* ===== Live feed (subscribe) ===== */
-function involvesTokenInTx(tx, token){
-  const sym = token.symbol;
-  const iss = token.issuer;
+/* ===== BUY/SELL feed via meta trustline deltas ===== */
+function getMeta(msg){ return msg?.meta || msg?.metaData || msg?.result?.meta || null; }
+function getTx(msg){ return msg?.transaction || msg?.tx || msg?.result?.transaction || msg; }
 
-  const amtMatch = (amt) => {
-    if (!amt || typeof amt !== "object") return false;
-    return amt.currency === sym && amt.issuer === iss;
+/**
+ * Extract token deltas per account from tx meta (RippleState changes).
+ * Returns [{account, delta}] where delta is in token units from holder POV.
+ *
+ * RippleState balance rules:
+ * - Balance is from LOW node perspective.
+ * - If holder is LowLimit.issuer => holding = Balance.value
+ * - If holder is HighLimit.issuer => holding = -Balance.value
+ */
+function extractTokenDeltasFromMeta(msg, token){
+  const meta = getMeta(msg);
+  if (!meta?.AffectedNodes) return [];
+
+  const out = new Map();
+
+  const addDelta = (account, delta) => {
+    if (!account || !Number.isFinite(delta) || Math.abs(delta) < 1e-12) return;
+    out.set(account, (out.get(account) || 0) + delta);
   };
 
-  // Common fields
-  if (amtMatch(tx.Amount)) return true;
-  if (amtMatch(tx.TakerGets)) return true;
-  if (amtMatch(tx.TakerPays)) return true;
-  if (amtMatch(tx.LimitAmount)) return true;
+  for (const wrap of meta.AffectedNodes){
+    const node = wrap.ModifiedNode || wrap.CreatedNode || wrap.DeletedNode || null;
+    if (!node) continue;
+    if (node.LedgerEntryType !== "RippleState") continue;
 
-  // Some tx shapes include arrays (rare); ignore for simplicity.
-  return false;
-}
+    const prev = node.PreviousFields || {};
+    const fin = node.FinalFields || node.NewFields || {};
 
-function summarizeTx(msg, token){
-  const tx = msg.transaction || msg.tx || msg;
-  const tt = tx.TransactionType || "Unknown";
-  const acct = tx.Account || "";
-  const hash = tx.hash || msg.hash || "";
-  const when = new Date().toLocaleTimeString();
+    const prevBalObj = prev.Balance;
+    const finBalObj = fin.Balance;
 
-  let line = "";
-  if (tt === "OfferCreate"){
-    const g = tx.TakerGets;
-    const p = tx.TakerPays;
+    if (!prevBalObj || !finBalObj) continue;
 
-    const fmtAmt = (a) => {
-      if (!a) return "—";
-      if (typeof a === "string") return `${a} drops`; // native drops
-      if (typeof a === "object"){
-        // IOU
-        return `${fmt(Number(a.value))} ${a.currency}`;
-      }
-      return "—";
-    };
+    if (finBalObj.currency !== token.symbol || finBalObj.issuer !== token.issuer) continue;
 
-    line = `OfferCreate • gets ${fmtAmt(g)} • pays ${fmtAmt(p)}`;
-  } else if (tt === "Payment"){
-    const a = tx.Amount;
-    if (typeof a === "object"){
-      line = `Payment • ${fmt(Number(a.value))} ${a.currency}`;
-    } else {
-      line = `Payment • native`;
-    }
-  } else if (tt === "TrustSet"){
-    const l = tx.LimitAmount;
-    if (l && typeof l === "object"){
-      line = `TrustSet • limit ${fmt(Number(l.value))} ${l.currency}`;
-    } else {
-      line = `TrustSet`;
-    }
-  } else if (tt === "OfferCancel"){
-    line = `OfferCancel`;
-  } else {
-    line = tt;
+    const low = fin?.LowLimit?.issuer;
+    const high = fin?.HighLimit?.issuer;
+    if (!low || !high) continue;
+
+    const issuer = token.issuer;
+    if (!(low === issuer || high === issuer)) continue;
+
+    const prevBal = Number(prevBalObj.value);
+    const finBal = Number(finBalObj.value);
+    if (!Number.isFinite(prevBal) || !Number.isFinite(finBal)) continue;
+
+    const holder = (low === issuer) ? high : low;
+    if (!holder || holder === issuer) continue;
+
+    const holderWasLow = (holder === low);
+    const prevHolding = holderWasLow ? prevBal : -prevBal;
+    const finHolding = holderWasLow ? finBal : -finBal;
+
+    addDelta(holder, finHolding - prevHolding);
   }
 
+  return Array.from(out.entries()).map(([account, delta]) => ({ account, delta }));
+}
+
+function involvesTokenInMsg(msg, token){
+  const deltas = extractTokenDeltasFromMeta(msg, token);
+  return deltas.length > 0;
+}
+
+function summarizeBuySell(msg, token){
+  const tx = getTx(msg);
+  const tt = tx?.TransactionType || "Unknown";
+  const hash = tx?.hash || msg?.hash || "";
+  const when = new Date().toLocaleTimeString();
+
+  const deltas = extractTokenDeltasFromMeta(msg, token);
+  if (!deltas.length) return null;
+
+  deltas.sort((a,b) => Math.abs(b.delta) - Math.abs(a.delta));
+  const main = deltas[0];
+
+  const amt = Math.abs(main.delta);
+  const dir =
+    main.delta > 0
+      ? (tt === "Payment" ? "RECEIVE" : "BUY")
+      : (tt === "Payment" ? "SEND" : "SELL");
+
   return {
-    type: tt,
+    type: dir,
     time: when,
-    account: acct,
-    text: line,
-    hash
+    account: main.account,
+    text: `${dir} ${fmt(amt)} ${token.symbol}  •  ${tt}`,
+    hash,
+    amount: amt,
+    delta: main.delta
   };
 }
 
+/* ===== Feed rendering ===== */
 function renderFeed(){
   feedList.innerHTML = "";
   const list = feedEvents.slice(0, 20);
@@ -603,42 +625,32 @@ function startFeed(){
 
   ws.addEventListener("open", () => {
     setFeedStatus(true, "subscribed");
-    const sub = {
+    ws.send(JSON.stringify({
       command: "subscribe",
       streams: ["transactions"]
-      // Note: not all servers support account/currency filters here, so we filter client-side.
-    };
-    ws.send(JSON.stringify(sub));
+    }));
   });
 
   ws.addEventListener("message", (ev) => {
     try{
       const msg = JSON.parse(ev.data);
-
-      // Transaction stream messages often have: {type:"transaction", transaction:{...}, meta:{...}}
       if (msg?.type !== "transaction") return;
-      const tx = msg.transaction;
-      if (!tx) return;
 
-      // Only keep events that involve this token
-      if (!involvesTokenInTx(tx, activeToken)) return;
+      if (!involvesTokenInMsg(msg, activeToken)) return;
 
-      const summary = summarizeTx(msg, activeToken);
+      const summary = summarizeBuySell(msg, activeToken);
+      if (!summary) return;
+
       feedEvents.unshift(summary);
-      feedEvents = feedEvents.slice(0, 50);
+      feedEvents = feedEvents.slice(0, 60);
       renderFeed();
     }catch{
       // ignore
     }
   });
 
-  ws.addEventListener("close", () => {
-    setFeedStatus(false, "disconnected");
-  });
-
-  ws.addEventListener("error", () => {
-    setFeedStatus(false, "ws error");
-  });
+  ws.addEventListener("close", () => setFeedStatus(false, "disconnected"));
+  ws.addEventListener("error", () => setFeedStatus(false, "ws error"));
 }
 
 /* ===== Token UI wiring ===== */
@@ -680,13 +692,9 @@ function applyTokenToUI(){
   footX.textContent = "x.com";
 
   setPills();
-
-  // set background emojis to token logo if you want (kept 💯 vibe if logo changes)
-  // Here we keep the floating emoji as 💯 to match your brand. If you want per-token:
-  // - clear emojiField and respawn with activeToken.logo
 }
 
-/* ===== Token selector setup ===== */
+/* ===== Token selector ===== */
 function initTokenSelector(){
   tokenSelect.innerHTML = "";
   for (const t of TOKENS){
@@ -700,9 +708,8 @@ function initTokenSelector(){
     const id = tokenSelect.value;
     const next = TOKENS.find(t => t.id === id) || TOKENS[0];
     activeToken = next;
-    applyTokenToUI();
 
-    // reload everything for the new token
+    applyTokenToUI();
     await loadHolders();
     startFeed();
   });
@@ -721,7 +728,6 @@ chips.forEach(chip => {
 });
 
 refreshBtn.addEventListener("click", () => loadHolders());
-
 feedReconnect.addEventListener("click", () => startFeed());
 
 /* ===== Boot ===== */
@@ -730,7 +736,6 @@ feedReconnect.addEventListener("click", () => startFeed());
     console.error("No tokens found in tokens.js (window.ONYX_TOKENS).");
     return;
   }
-
   activeToken = TOKENS[0];
   initTokenSelector();
   tokenSelect.value = activeToken.id;

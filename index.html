@@ -1,4 +1,3 @@
-<!-- index.html -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -24,7 +23,6 @@
       </div>
 
       <div class="rightHeader">
-        <!-- Token selector (top-right) -->
         <div class="tokenPicker">
           <div class="tokenPickerLabel">Token</div>
           <select id="tokenSelect" aria-label="Select token"></select>
@@ -44,13 +42,9 @@
       <div class="heroGrid">
         <div>
           <h1><span class="emojiBig hoverable" id="heroEmoji">💯</span><span id="heroName">100</span></h1>
-          <p id="heroDesc">
-            Loading…
-          </p>
+          <p id="heroDesc">Loading…</p>
 
-          <div class="pillRow" id="pillRow">
-            <!-- filled by JS -->
-          </div>
+          <div class="pillRow" id="pillRow"></div>
 
           <div class="ctaRow">
             <a class="btn primary" href="#richlist"><span class="dot"></span> View Rich List</a>
@@ -82,13 +76,12 @@
           </div>
 
           <div class="cardHint" id="cardHint">
-            <b>Badges:</b> Top 3 (🥇🥈🥉), #100 holder (❤️), 1% Club (🟢), DEX Culture (🔵).
+            <b>Badges:</b> Top 3 (🥇🥈🥉), last holder (❤️), 1% Club tiers (🟢🐋🖤), DEX Culture (🔵), Exact One (🎯).
           </div>
         </aside>
       </div>
     </section>
 
-    <!-- EXPERIMENT PANELS -->
     <section class="grid2">
       <div class="panel">
         <div class="panelHead">
@@ -136,14 +129,11 @@
         </div>
         <div class="panelBody">
           <div class="badgeCards" id="badgeCards"></div>
-          <div class="miniNote">
-            Later: mint these as NFT badges. For now: computed live from ledger state.
-          </div>
+          <div class="miniNote">Later: mint these as NFT badges. For now: computed live from ledger state.</div>
         </div>
       </div>
     </section>
 
-    <!-- TRADE / ACTIVITY FEED -->
     <section class="panel" id="feed">
       <div class="panelHead">
         <h2>Live Activity Feed</h2>
@@ -155,7 +145,7 @@
       </div>
       <div class="panelBody">
         <div class="feedControls">
-          <div class="miniNote">Pulled via WebSocket subscribe (no backend). Filters for this token’s currency+issuer.</div>
+          <div class="miniNote">BUY/SELL is computed from trustline balance deltas in transaction meta (no backend).</div>
           <button class="chip" id="feedReconnect">Reconnect</button>
         </div>
 
@@ -163,7 +153,6 @@
       </div>
     </section>
 
-    <!-- RICHLIST -->
     <section class="panel" id="richlist">
       <div class="panelHead">
         <h2>Rich List</h2>
@@ -184,7 +173,7 @@
             <div class="chip active" data-filter="all">All</div>
             <div class="chip" data-filter="club">1% Club</div>
             <div class="chip" data-filter="top3">Top 3</div>
-            <div class="chip" data-filter="last">#100</div>
+            <div class="chip" data-filter="last">Last</div>
             <div class="chip" id="refreshBtn">Refresh</div>
           </div>
         </div>

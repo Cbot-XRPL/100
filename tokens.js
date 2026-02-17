@@ -1,4 +1,3 @@
-// tokens.js
 window.ONYX_TOKENS = [
   {
     id: "100",
@@ -20,22 +19,4 @@ window.ONYX_TOKENS = [
     ],
     whaleTopN: [1, 3, 5, 10],
   },
-
-  // Add future tokens here with same fields.
-  // Example:
-  // {
-  //   id: "ONYX2",
-  //   name: "ONYX 2",
-  //   symbol: "O2",
-  //   issuer: "r....",
-  //   totalSupply: 1000,
-  //   logo: "🖤",
-  //   theme: "drop",
-  //   ws: "wss://xahau.network",
-  //   explorerUrl: "https://xahauexplorer.com/...",
-  //   xUrl: "https://x.com/...",
-  //   description: "Second drop…",
-  //   clubTiers: [{ name:"Member", min: 10, icon:"🟢" }],
-  //   whaleTopN: [1,3,10]
-  // }
 ];
