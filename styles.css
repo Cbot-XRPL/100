@@ -282,6 +282,15 @@ select option{
   color:rgba(255,255,255,.85);
 }
 .pill b{color:var(--text)}
+.pillLink{
+  text-decoration:none;
+  transition:transform .12s ease, border-color .12s ease, background .12s ease;
+}
+.pillLink:hover{
+  transform:translateY(-1px);
+  border-color:rgba(255,255,255,.24);
+  background:rgba(255,255,255,.07);
+}
 .ctaRow{margin-top:14px; display:flex; gap:10px; flex-wrap:wrap}
 
 .cardRight{
@@ -354,6 +363,9 @@ select option{
   grid-template-columns:1fr 1fr;
   gap:16px;
   margin:16px 0;
+}
+#whitepaperPanel{
+  margin:0 0 16px;
 }
 @media (max-width: 900px){
   .grid2{grid-template-columns:1fr}

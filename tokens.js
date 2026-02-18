@@ -17,6 +17,8 @@
     ws: "wss://xahau.network",
     explorerUrl: "https://xahauexplorer.com/en/token/roneGNc3hdSwWZEr54RZceQr8Fftq6fkL/ONE",
     xUrl: "https://x.com/One_Xahau",
+    whitepaper: "ONE is a tiny-supply culture token on Xahau. Core thesis: social coordination through scarce supply, transparent holder distribution, and live DEX participation.",
+    whitepaperHtml: "",
     description:
       "A tiny-supply culture token built to make you touch the DEX. Genesis of Onyx drops: hold 1+ and you're in the future set.",
     badgeRules: [
@@ -47,6 +49,8 @@
     ws: "wss://xahau.network",
     explorerUrl: "https://xahauexplorer.com/en/token/rEvernodee8dJLaFsujS6q1EiXvZYmHXr8/EVR",
     xUrl: "https://x.com/EvernodeXRPL",
+    whitepaper: "EVR is Evernode's utility token on Xahau, used in host economics and service coordination. Holder concentration and activity metrics are shown here for transparency.",
+    whitepaperHtml: "",
     description:
       "Evernode's native token on Xahau, used for hosting, registration, and dApp service payments.",
     badgeRules: [
@@ -78,6 +82,8 @@
     ws: "wss://xahau.network",
     explorerUrl: "https://xahauexplorer.com/en/token/rLRVSaK575YXwwnkC5QSTLK7E1r1ps5TCs/584D455243480000000000000000000000000000",
     xUrl: "https://x.com/xMerch_",
+    whitepaper: "XMERCH is an ecosystem token for xMerch activity on Xahau. This hub tracks distribution, holder badges, and live trustline-driven activity to monitor adoption.",
+    whitepaperHtml: "",
     description:
       "Xmerch token on Xahau used across the xMerch ecosystem.",
     badgeRules: [

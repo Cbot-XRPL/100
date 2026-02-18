@@ -29,6 +29,9 @@ const statEmoji = document.getElementById("statEmoji");
 const panelEmojiDecent = document.getElementById("panelEmojiDecent");
 const panelEmojiFeed = document.getElementById("panelEmojiFeed");
 const panelEmojiRich = document.getElementById("panelEmojiRich");
+const whitepaperMeta = document.getElementById("whitepaperMeta");
+const whitepaperSummary = document.getElementById("whitepaperSummary");
+const btnWhitepaper = document.getElementById("btnWhitepaper");
 
 const btnExplorer = document.getElementById("btnExplorer");
 const btnTokenDetails = document.getElementById("btnTokenDetails");
@@ -1078,14 +1081,24 @@ function setPills(){
   pillRow.innerHTML = "";
   const pills = [
     { k:"Network", v: "Xahau" },
-    { k:"Mode", v: "Experimental" },
     { k:"Genesis gate", v: "Hold = 1" },
-    { k:"Supply", v: String(activeToken.totalSupply) }
+    { k:"Supply", v: String(activeToken.totalSupply) },
+    { k:"Social", v: "Twitter", href: activeToken.xUrl || "#" }
   ];
   for (const p of pills){
-    const d = el("div","pill");
-    d.innerHTML = `${p.k}: <b>${p.v}</b>`;
-    pillRow.appendChild(d);
+    if (p.href){
+      const a = document.createElement("a");
+      a.className = "pill pillLink";
+      a.href = p.href;
+      a.target = "_blank";
+      a.rel = "noreferrer";
+      a.innerHTML = `${p.k}: <b>${p.v}</b>`;
+      pillRow.appendChild(a);
+    } else {
+      const d = el("div","pill");
+      d.innerHTML = `${p.k}: <b>${p.v}</b>`;
+      pillRow.appendChild(d);
+    }
   }
 }
 
@@ -1127,6 +1140,18 @@ function applyTokenToUI(){
   footX.href = activeToken.xUrl || "#";
   footExplorer.textContent = "xahauexplorer";
   footX.textContent = "x.com";
+
+  if (whitepaperSummary){
+    whitepaperSummary.textContent = activeToken.whitepaper || "White paper text coming soon.";
+  }
+  if (whitepaperMeta){
+    whitepaperMeta.textContent = (activeToken.whitepaper || activeToken.whitepaperHtml) ? "live" : "pending";
+  }
+  if (btnWhitepaper){
+    const hasRemoteWhitepaper = Boolean(activeToken.whitepaperHtml);
+    btnWhitepaper.href = hasRemoteWhitepaper ? activeToken.whitepaperHtml : "#";
+    btnWhitepaper.style.display = hasRemoteWhitepaper ? "inline-flex" : "none";
+  }
 
   setPills();
 }
