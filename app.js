@@ -18,7 +18,6 @@ const brandEmoji = document.getElementById("brandEmoji");
 const heroEmoji = document.getElementById("heroEmoji");
 const heroName = document.getElementById("heroName");
 const heroDesc = document.getElementById("heroDesc");
-const brandSub = document.getElementById("brandSub");
 const pillRow = document.getElementById("pillRow");
 const statSupply = document.getElementById("statSupply");
 const statEmoji = document.getElementById("statEmoji");
@@ -723,7 +722,6 @@ function applyTokenToUI(){
   statEmoji.textContent = activeToken.logo || "🖤";
 
   heroName.textContent = activeToken.name || activeToken.id;
-  brandSub.textContent = `${activeToken.logo || "🖤"} ${activeToken.name} • ${activeToken.symbol} • supply: ${activeToken.totalSupply}`;
   heroDesc.textContent = activeToken.description || "Onyx token.";
 
   statSupply.textContent = String(activeToken.totalSupply);

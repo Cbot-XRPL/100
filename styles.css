@@ -79,10 +79,13 @@ header{
   font-weight:800; letter-spacing:.5px; font-size:14px;
   color:rgba(255,255,255,.85); text-transform:uppercase;
 }
-.brand .titles .sub{
-  font-size:12px; color:var(--muted); font-family:var(--mono);
+.brand .titles .tagline{
+  display:block;
+  font-size:12px;
+  color:rgba(255,255,255,.86);
+  letter-spacing:.2px;
+  line-height:1.25;
 }
-
 .rightHeader{
   display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:flex-end;
 }
