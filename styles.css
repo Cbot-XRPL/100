@@ -144,7 +144,6 @@ select{
   color:var(--text);
   text-decoration:none;
   font-size:13px;
-  box-shadow:0 8px 25px rgba(0,0,0,.25);
   transition:transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease;
   user-select:none;
 }
@@ -157,6 +156,18 @@ select{
 .btn.primary{
   border-color:rgba(255,45,45,.35);
   background:radial-gradient(circle at 20% 20%, rgba(255,45,45,.22), rgba(255,255,255,.05));
+}
+
+.btn.ctaFocus{
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 800;
+  border-color: rgba(255,213,74,.45);
+  background: radial-gradient(circle at 20% 20%, rgba(255,213,74,.22), rgba(255,255,255,.06));
+}
+.btn.ctaFocus:hover{
+  border-color: rgba(255,213,74,.7);
+  box-shadow: 0 14px 34px rgba(255,213,74,.28);
 }
 .btn .dot{
   width:9px; height:9px; border-radius:99px;
@@ -563,3 +574,4 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
   box-shadow:0 12px 30px rgba(0,0,0,.35);
 }
 #toast.show{opacity:1; transform:translateX(-50%) translateY(-2px)}
+
