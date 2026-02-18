@@ -10,6 +10,8 @@ window.ONYX_TOKENS = [
     ws: "wss://xahau.network",
     explorerUrl: "https://xahauexplorer.com/en/token/roneGNc3hdSwWZEr54RZceQr8Fftq6fkL/ONE",
     xUrl: "https://x.com/One_Xahau",
+    trustlineUrl: "https://xmagnetic.org/trustline?issuer=roneGNc3hdSwWZEr54RZceQr8Fftq6fkL&currency=ONE",
+    tradeUrl: "https://xmagnetic.org/trade?issuer=roneGNc3hdSwWZEr54RZceQr8Fftq6fkL&currency=ONE",
     description:
       "A tiny-supply culture token built to make you touch the DEX. Genesis of Onyx drops: hold 1+ and you’re in the future set.",
     clubTiers: [
