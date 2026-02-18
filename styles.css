@@ -1,4 +1,4 @@
-:root{
+﻿:root{
   --bg:#07070a;
   --text:rgba(255,255,255,0.92);
   --muted:rgba(255,255,255,0.65);
@@ -167,7 +167,7 @@ select{
 }
 .tokenPicker{position:relative}
 .tokenPicker:after{
-  content:"▾";
+  content:"v";
   position:absolute;
   right:14px;
   color:rgba(255,255,255,.65);
@@ -315,6 +315,8 @@ select option{
 .stat .k{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.8px}
 .stat .v{font-size:18px; font-weight:800; margin-top:5px}
 .stat .v small{font-size:12px; color:var(--muted); font-weight:600; margin-left:6px}
+.statSupplyRow{display:flex; align-items:center; gap:8px}
+.statSupplyRow small{margin-left:0}
 .stat .smallv{font-size:14px; font-weight:800}
 .cardHint{color:var(--muted); font-size:12px; line-height:1.35}
 
@@ -437,8 +439,10 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
   padding:4px 8px;
   border-radius:999px;
   color:rgba(255,255,255,.90);
-  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  max-width:320px;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  max-width:none;
   display:inline-block;
 }
 .copy{
@@ -754,3 +758,4 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
     grid-template-columns:1fr;
   }
 }
+

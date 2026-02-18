@@ -1,9 +1,9 @@
-/******************************************************************
- * ONYX HUB — Multi-token (no backend)
+﻿/******************************************************************
+ * ONYX HUB - Multi-token (no backend)
  * - Rich list: account_lines (issuer) via WebSocket
  * - Live feed: subscribe stream via WebSocket
  * - BUY/SELL: computed from trustline deltas in transaction meta (RippleState)
- * - Price (XAH): computed from AccountRoot balance deltas in meta (drops → XAH)
+ * - Price (XAH): computed from AccountRoot balance deltas in meta (drops -> XAH)
  *
  * Lightweight:
  * - No extra network calls
@@ -22,9 +22,13 @@ const heroEmoji = document.getElementById("heroEmoji");
 const heroName = document.getElementById("heroName");
 const heroDesc = document.getElementById("heroDesc");
 const brandSub = document.getElementById("brandSub");
+const cardHint = document.getElementById("cardHint");
 const pillRow = document.getElementById("pillRow");
 const statSupply = document.getElementById("statSupply");
 const statEmoji = document.getElementById("statEmoji");
+const panelEmojiDecent = document.getElementById("panelEmojiDecent");
+const panelEmojiFeed = document.getElementById("panelEmojiFeed");
+const panelEmojiRich = document.getElementById("panelEmojiRich");
 
 const btnExplorer = document.getElementById("btnExplorer");
 const btnTokenDetails = document.getElementById("btnTokenDetails");
@@ -67,7 +71,7 @@ function rand(min, max){ return Math.random() * (max - min) + min; }
 function spawnEmoji(){
   const el = document.createElement("div");
   el.className = "emoji";
-  el.textContent = "💯"; // brand vibe (leave as 💯 even for later tokens)
+  el.textContent = "\u{1F4AF}";
   el.style.left = rand(0, 100) + "vw";
   el.style.top = rand(30, 120) + "vh";
   el.style.fontSize = rand(14, 28) + "px";
@@ -163,16 +167,156 @@ function getExcludedAddressSet(token){
 function getTokenCurrency(token){
   return token?.currency || token?.symbol || "";
 }
+const DEFAULT_BADGE_RULES = [
+  { id: "top1", title: "Top Holder", icon: "\u{1F947}", className: "gold", type: "rank", rank: 1, rule: "Rank #1 wallet" },
+  { id: "top2", title: "Runner Up", icon: "\u{1F948}", className: "silver", type: "rank", rank: 2, rule: "Rank #2 wallet" },
+  { id: "top3", title: "Third Place", icon: "\u{1F949}", className: "bronze", type: "rank", rank: 3, rule: "Rank #3 wallet" },
+  { id: "last", title: "Last Holder", icon: "\u{2764}\u{FE0F}", className: "red", type: "last", rule: "Hold the last rank" },
+  { id: "genesis", title: "Genesis Member", icon: "\u{1F7E2}", className: "club", type: "threshold", min: 1, rule: "Hold >= 1 {symbol}" },
+  { id: "whale", title: "Whale", icon: "\u{1F40B}", className: "club", type: "threshold", min: 5, rule: "Hold >= 5" },
+  { id: "council", title: "Council", icon: "\u{1F5A4}", className: "dark", type: "threshold", min: 10, rule: "Hold >= 10" },
+  { id: "dex", title: "DEX Culture", icon: "\u{1F535}", className: "education", type: "any", rule: "Hold any amount (> 0)" },
+  { id: "exact1", title: "Exact One", icon: "\u{1F3AF}", className: "club", type: "exact", value: 1, epsilon: 1e-9, rule: "Hold exactly 1.0000" },
+];
+function getBadgeRules(token){
+  const list = Array.isArray(token?.badgeRules) && token.badgeRules.length
+    ? token.badgeRules
+    : DEFAULT_BADGE_RULES;
+  return list.filter(Boolean);
+}
+function badgeRequiredQty(badge){
+  const type = badge?.type || "threshold";
+  if (type === "threshold") return Number(badge.min || 0);
+  if (type === "exact") return Number(badge.value || 0);
+  if (type === "any") return 0.000000001;
+  return Number.POSITIVE_INFINITY; // rank/last/top aren't quantity-based
+}
+function sortBadgesByRequiredQty(rules){
+  return [...rules].sort((a, b) => {
+    const aType = a?.type || "threshold";
+    const bType = b?.type || "threshold";
+
+    const group = (t) => {
+      if (t === "rank") return 0;       // Top Holder, Runner Up, Third Place
+      if (t === "top") return 1;
+      if (t === "threshold" || t === "exact" || t === "any") return 2; // quantity-based
+      if (t === "last") return 3;       // near bottom
+      return 4;
+    };
+
+    const ag = group(aType);
+    const bg = group(bType);
+    if (ag !== bg) return ag - bg;
+
+    if (aType === "rank" && bType === "rank"){
+      return (Number(a?.rank || 999) - Number(b?.rank || 999));
+    }
+
+    if (ag === 2){
+      const aq = badgeRequiredQty(a);
+      const bq = badgeRequiredQty(b);
+      if (aq !== bq) return bq - aq; // high -> low for quantity badges
+    }
+
+    return String(a?.title || "").localeCompare(String(b?.title || ""));
+  });
+}
+function holderQualifiesBadge(holder, badge){
+  const type = badge?.type || "threshold";
+  if (type === "threshold"){
+    return holder.balance >= Number(badge.min || 0);
+  }
+  if (type === "exact"){
+    const value = Number.isFinite(Number(badge.value)) ? Number(badge.value) : 1;
+    const epsilon = Number.isFinite(Number(badge.epsilon)) ? Number(badge.epsilon) : 1e-9;
+    return Math.abs(holder.balance - value) < epsilon;
+  }
+  if (type === "rank"){
+    return holder.rank === Math.floor(Number(badge.rank || 0));
+  }
+  if (type === "top"){
+    return holder.rank <= Math.max(0, Math.floor(Number(badge.top || 0)));
+  }
+  if (type === "last"){
+    return Boolean(holder.isLast);
+  }
+  if (type === "any"){
+    return holder.balance > 0;
+  }
+  return false;
+}
+function badgeQualifyCount(holders, badge){
+  const type = badge?.type || "threshold";
+  if (type === "threshold"){
+    const min = Number.isFinite(Number(badge.min)) ? Number(badge.min) : 0;
+    return holders.filter((h) => h.balance >= min).length;
+  }
+  if (type === "exact"){
+    const value = Number.isFinite(Number(badge.value)) ? Number(badge.value) : 1;
+    const epsilon = Number.isFinite(Number(badge.epsilon)) ? Number(badge.epsilon) : 1e-9;
+    return holders.filter((h) => Math.abs(h.balance - value) < epsilon).length;
+  }
+  if (type === "rank"){
+    const rank = Math.max(1, Math.floor(Number(badge.rank) || 1));
+    return holders.length >= rank ? 1 : 0;
+  }
+  if (type === "top"){
+    const top = Math.max(0, Math.floor(Number(badge.top) || 0));
+    return Math.min(top, holders.length);
+  }
+  if (type === "last"){
+    return holders.length ? 1 : 0;
+  }
+  if (type === "any"){
+    return holders.filter((h) => h.balance > 0).length;
+  }
+  return 0;
+}
+function badgeRuleText(rule){
+  return String(rule || "").replace(/\{symbol\}/g, activeToken?.symbol || "TOKEN");
+}
+const emojiLogoCache = new Map();
+function getNativeEmojiLogoUrl(emoji){
+  const key = `native:${emoji}`;
+  if (emojiLogoCache.has(key)) return emojiLogoCache.get(key);
+  try{
+    const size = 256;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+
+    ctx.clearRect(0, 0, size, size);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    // Render the exact platform emoji glyph shape.
+    ctx.font = "900 192px 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji'";
+    ctx.fillText(String(emoji || ""), size / 2, size / 2 + 10);
+    const url = canvas.toDataURL("image/png");
+    emojiLogoCache.set(key, url);
+    return url;
+  }catch{
+    return "";
+  }
+}
 function getTokenLogoUrl(token){
   if (token?.logoUrl) return token.logoUrl;
+  if (token?.useIssuerAvatar === false) return "";
   if (token?.issuer) return `https://cdn.bithomp.com/avatar/${encodeURIComponent(token.issuer)}`;
   return "";
 }
 function setTokenLogo(elm, token, fallbackText){
   if (!elm) return;
-  const logoUrl = getTokenLogoUrl(token);
+  const generatedEmojiLogo =
+    token?.logoMode === "emoji-native" && token?.logo
+      ? getNativeEmojiLogoUrl(token.logo)
+      : "";
+  const logoUrl = generatedEmojiLogo || getTokenLogoUrl(token);
+  elm.style.filter = "";
   if (!logoUrl){
     elm.textContent = fallbackText;
+    if (token?.logoFilter) elm.style.filter = token.logoFilter;
     return;
   }
   elm.innerHTML = "";
@@ -183,6 +327,8 @@ function setTokenLogo(elm, token, fallbackText){
   img.loading = "lazy";
   img.decoding = "async";
   img.referrerPolicy = "no-referrer";
+  img.style.borderRadius = token?.logoRounded === false ? "0" : "50%";
+  if (token?.logoFilter) img.style.filter = token.logoFilter;
   img.onerror = () => {
     elm.innerHTML = "";
     elm.textContent = fallbackText;
@@ -298,17 +444,13 @@ function makeBadge(label, klass, icon){
 }
 function badgesFor(holder){
   const b = [];
-  if (holder.rank === 1) b.push(makeBadge("Top Holder", "gold", "🥇"));
-  if (holder.rank === 2) b.push(makeBadge("Runner Up", "silver", "🥈"));
-  if (holder.rank === 3) b.push(makeBadge("Third Place", "bronze", "🥉"));
-  if (holder.isLast) b.push(makeBadge("Last Holder", "red", "❤️"));
-
-  for (const tier of (activeToken.clubTiers || [])){
-    if (holder.balance >= tier.min) b.push(makeBadge(tier.name, tier.min >= 10 ? "dark" : "club", tier.icon));
+  const rules = sortBadgesByRequiredQty(
+    getBadgeRules(activeToken).filter((r) => r.row !== false)
+  );
+  for (const rule of rules){
+    if (!holderQualifiesBadge(holder, rule)) continue;
+    b.push(makeBadge(rule.rowLabel || rule.title || "Badge", rule.className || "", rule.icon || ""));
   }
-
-  if (holder.balance > 0) b.push(makeBadge("DEX Culture", "education", "🔵"));
-  if (Math.abs(holder.balance - 1) < 1e-9) b.push(makeBadge("Exact One", "club", "🎯"));
   return b;
 }
 function applyRowGlow(tr, holder){
@@ -371,7 +513,7 @@ function renderTable(){
 
     const tdAddr = el("td");
     const addrWrap = el("div","addr");
-    const code = el("code", null, shortAddr(holder.address));
+    const code = el("code", null, holder.address);
     code.title = holder.address;
 
     const copyBtn = el("button","copy","Copy");
@@ -452,7 +594,7 @@ function computeStats(){
   if (holders.length){
     topHolderPctEl.textContent = pctOfSupply(holders[0].balance).toFixed(2).replace(/0+$/,'').replace(/\.$/,'');
   } else {
-    topHolderPctEl.textContent = "—";
+    topHolderPctEl.textContent = "-";
   }
 
   lastUpdateEl.textContent = new Date().toLocaleString();
@@ -463,11 +605,11 @@ function computeStats(){
   for (const n of ns){
     const m = el("div","metric");
     m.appendChild(el("div","k",`Top ${n}`));
-    const v = el("div","v", holders.length ? `${computeTopN(holders, n).toFixed(2)}%` : "—");
+    const v = el("div","v", holders.length ? `${computeTopN(holders, n).toFixed(2)}%` : "-");
     m.appendChild(v);
     whaleRow.appendChild(m);
   }
-  whaleMeta.textContent = holders.length ? `${holders.length} holders` : "—";
+  whaleMeta.textContent = holders.length ? `${holders.length} holders` : "-";
 
   // Decentralization score (simple Onyx metric)
   const top3 = holders.length ? computeTopN(holders, 3) : 0;
@@ -475,16 +617,16 @@ function computeStats(){
   let score = 100 - (top3 + (top10/2));
   score = Math.max(0, Math.min(100, score));
 
-  decentScoreEl.textContent = holders.length ? String(Math.round(score)) : "—";
-  decentExplainEl.textContent = holders.length ? `Top3 ${top3.toFixed(1)}% • Top10 ${top10.toFixed(1)}%` : "—";
+  decentScoreEl.textContent = holders.length ? String(Math.round(score)) : "-";
+  decentExplainEl.textContent = holders.length ? `Top3 ${top3.toFixed(1)}% | Top10 ${top10.toFixed(1)}%` : "-";
   decentBar.style.width = holders.length ? `${score}%` : "0%";
 
   // Supply buckets
   const buckets = [
     { name: "10+ tokens", min: 10, max: Infinity },
-    { name: "5–9.99", min: 5, max: 9.999999 },
-    { name: "1–4.99", min: 1, max: 4.999999 },
-    { name: "0.1–0.99", min: 0.1, max: 0.999999 },
+    { name: "5-9.99", min: 5, max: 9.999999 },
+    { name: "1-4.99", min: 1, max: 4.999999 },
+    { name: "0.1-0.99", min: 0.1, max: 0.999999 },
     { name: "< 0.1", min: 0.000000001, max: 0.099999 },
   ];
 
@@ -494,7 +636,7 @@ function computeStats(){
   });
 
   const circulating = holders.reduce((acc, h) => acc + h.balance, 0);
-  supplyMeta.textContent = holders.length ? `${fmt(circulating)} / ${fmt(activeToken.totalSupply)} circulating` : "—";
+  supplyMeta.textContent = holders.length ? `${fmt(circulating)} / ${fmt(activeToken.totalSupply)} circulating` : "-";
 
   bucketList.innerHTML = "";
   for (const b of totals){
@@ -518,16 +660,17 @@ function computeStats(){
 }
 
 function renderBadgeCards(holders){
-  const rules = [
-    { title: "Genesis Member", icon: "🟢", rule: `Hold ≥ 1 ${activeToken.symbol}`, qualifies: holders.filter(h => h.balance >= 1).length },
-    { title: "Exact One", icon: "🎯", rule: `Hold exactly 1.0000`, qualifies: holders.filter(h => Math.abs(h.balance - 1) < 1e-9).length },
-    { title: "Top 3", icon: "🥇", rule: `Be in the top 3 wallets`, qualifies: Math.min(3, holders.length) },
-    { title: "Bottom Guardian", icon: "❤️", rule: `Hold the last rank`, qualifies: holders.length ? 1 : 0 },
-    { title: "Council", icon: "🖤", rule: `Hold ≥ 10`, qualifies: holders.filter(h => h.balance >= 10).length },
-    { title: "Whale", icon: "🐋", rule: `Hold ≥ 5`, qualifies: holders.filter(h => h.balance >= 5).length },
-  ];
+  const rules = sortBadgesByRequiredQty(
+    getBadgeRules(activeToken).filter((r) => r.panel !== false)
+  )
+    .map((r) => ({
+      title: r.title || "Badge",
+      icon: r.icon || "\u{1F3F7}\u{FE0F}",
+      rule: badgeRuleText(r.rule || ""),
+      qualifies: badgeQualifyCount(holders, r)
+    }));
 
-  badgeMeta.textContent = holders.length ? `${rules.length} badges live` : "—";
+  badgeMeta.textContent = holders.length ? `${rules.length} badges live` : "-";
   badgeCards.innerHTML = "";
 
   for (const r of rules){
@@ -823,7 +966,7 @@ function summarizeBuySellWithPrice(msg, token){
     const xahAbs = Math.abs(xahDelta);
     const px = xahAbs / tokenAmt;
     if (Number.isFinite(px) && px > 0){
-      priceStr = ` • @ ${fmtPrice(px)} XAH`;
+      priceStr = ` | @ ${fmtPrice(px)} XAH`;
     }
   }
 
@@ -831,7 +974,7 @@ function summarizeBuySellWithPrice(msg, token){
     type: dir,
     time: when,
     account: main.account,
-    text: `${dir} ${fmt(tokenAmt)} ${token.symbol}${priceStr}  •  ${tt}`,
+    text: `${dir} ${fmt(tokenAmt)} ${token.symbol}${priceStr} | ${tt}`,
     hash,
     amount: tokenAmt,
     delta: main.delta,
@@ -861,9 +1004,9 @@ function renderFeed(){
 
     const body = el("div","feedBody");
     const xahHint = Number.isFinite(e.xahDelta)
-      ? ` • XAH Δ: ${fmt(e.xahDelta)}`
+      ? ` | XAH delta: ${fmt(e.xahDelta)}`
       : "";
-    body.innerHTML = `Acct: <span class="feedAddr">${shortAddr(e.account)}</span>${e.hash ? ` • Hash: ${shortAddr(e.hash)}` : ""}${xahHint}`;
+    body.innerHTML = `Acct: <span class="feedAddr">${shortAddr(e.account)}</span>${e.hash ? ` | Hash: ${shortAddr(e.hash)}` : ""}${xahHint}`;
     item.appendChild(body);
 
     feedList.appendChild(item);
@@ -881,7 +1024,7 @@ function startFeed(){
   feedEvents = [];
   renderFeed();
 
-  setFeedStatus(true, "connecting…");
+  setFeedStatus(true, "connecting...");
   const ws = new WebSocket(activeToken.ws);
   feedWS = ws;
 
@@ -933,7 +1076,7 @@ function setPills(){
   const pills = [
     { k:"Network", v: "Xahau" },
     { k:"Mode", v: "Experimental" },
-    { k:"Genesis gate", v: "Hold ≥ 1" },
+    { k:"Genesis gate", v: "Hold = 1" },
     { k:"Supply", v: String(activeToken.totalSupply) }
   ];
   for (const p of pills){
@@ -947,9 +1090,12 @@ function applyTokenToUI(){
   if (!activeToken) return;
 
   document.title = `Onyx — ${activeToken.name}`;
-  setTokenLogo(brandEmoji, activeToken, activeToken.logo || "🖤");
-  setTokenLogo(heroEmoji, activeToken, activeToken.logo || "🖤");
-  setTokenLogo(statEmoji, activeToken, activeToken.logo || "🖤");
+  setTokenLogo(brandEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
+  setTokenLogo(heroEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
+  setTokenLogo(statEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
+  setTokenLogo(panelEmojiDecent, activeToken, activeToken.logo || "\u{1F5A4}");
+  setTokenLogo(panelEmojiFeed, activeToken, activeToken.logo || "\u{1F5A4}");
+  setTokenLogo(panelEmojiRich, activeToken, activeToken.logo || "\u{1F5A4}");
 
   heroName.textContent = activeToken.name || activeToken.id;
 
@@ -959,6 +1105,13 @@ function applyTokenToUI(){
 
 
   heroDesc.textContent = activeToken.description || "Onyx token.";
+  if (cardHint){
+    const hintItems = sortBadgesByRequiredQty(
+      getBadgeRules(activeToken).filter((r) => r.panel !== false)
+    )
+      .map((r) => `${r.icon || ""} ${r.title || "Badge"}`.trim());
+    cardHint.innerHTML = `<b>Badges:</b> ${hintItems.join(", ")}.`;
+  }
 
   statSupply.textContent = String(activeToken.totalSupply);
 
@@ -981,7 +1134,8 @@ function initTokenSelector(){
   for (const t of TOKENS){
     const opt = document.createElement("option");
     opt.value = t.id;
-    opt.textContent = `${t.logo || "🖤"} ${t.name} (${t.symbol})`;
+    const labelIcon = t.id === "100" ? "" : (t.logo || "");
+    opt.textContent = `${labelIcon ? (labelIcon + " ") : ""}${t.name} (${t.symbol})`;
     tokenSelect.appendChild(opt);
   }
 
