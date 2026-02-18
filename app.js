@@ -73,7 +73,7 @@ function spawnEmoji(){
 }
 for (let i=0;i<EMOJI_COUNT;i++) spawnEmoji();
 
-const ACCENTS = ["#ff2d2d", "#ffd54a", "#3aa0ff", "#43ff9a", "#c26bff"];
+const ACCENTS = [ "#ffd54a",];
 let accentIndex = 0;
 document.addEventListener("mouseover", (e) => {
   const t = e.target;
@@ -736,7 +736,10 @@ function applyTokenToUI(){
   statEmoji.textContent = activeToken.logo || "🖤";
 
   heroName.textContent = activeToken.name || activeToken.id;
-  brandSub.textContent = "Onyx token hub — live rich lists + DEX culture experiments on Xahau.";
+
+
+  brandSub.textContent = "Live rich lists + DEX culture experiments on Xahau.";
+
   heroDesc.textContent = activeToken.description || "Onyx token.";
 
   statSupply.textContent = String(activeToken.totalSupply);
