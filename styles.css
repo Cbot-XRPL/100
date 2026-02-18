@@ -21,6 +21,9 @@ body{
     radial-gradient(900px 500px at 85% 10%, rgba(58,160,255,.12), transparent 55%),
     radial-gradient(900px 500px at 65% 110%, rgba(255,213,74,.10), transparent 55%),
     var(--bg);
+  background-repeat:no-repeat;
+  background-attachment:fixed;
+  background-color:var(--bg);
   color:var(--text);
   overflow-x:hidden;
 }
@@ -87,7 +90,7 @@ header{
   line-height:1.2;
 }
 .brand .titles .sub{
-  font-size:12px; color:var(--muted); font-family:var(--mono);
+  font-size:14px; color:var(--muted); font-family:var(--mono);
 }
 
 .rightHeader{

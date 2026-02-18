@@ -25,6 +25,8 @@ const statEmoji = document.getElementById("statEmoji");
 
 const btnExplorer = document.getElementById("btnExplorer");
 const btnTokenDetails = document.getElementById("btnTokenDetails");
+const btnTrustline = document.getElementById("btnTrustline");
+const btnTrade = document.getElementById("btnTrade");
 const btnX = document.getElementById("btnX");
 const footExplorer = document.getElementById("footExplorer");
 const footX = document.getElementById("footX");
@@ -698,6 +700,17 @@ function startFeed(){
   ws.addEventListener("error", () => setFeedStatus(false, "ws error"));
 }
 
+
+function buildTrustlineUrl(token){
+  if (token.trustlineUrl) return token.trustlineUrl;
+  return `https://xmagnetic.org/trustline?issuer=${encodeURIComponent(token.issuer || "")}&currency=${encodeURIComponent(token.symbol || "")}`;
+}
+
+function buildTradeUrl(token){
+  if (token.tradeUrl) return token.tradeUrl;
+  return `https://xmagnetic.org/trade?issuer=${encodeURIComponent(token.issuer || "")}&currency=${encodeURIComponent(token.symbol || "")}`;
+}
+
 /* ===== Token UI wiring ===== */
 function setPills(){
   pillRow.innerHTML = "";
@@ -723,13 +736,15 @@ function applyTokenToUI(){
   statEmoji.textContent = activeToken.logo || "🖤";
 
   heroName.textContent = activeToken.name || activeToken.id;
-  brandSub.textContent = `${activeToken.logo || "🖤"} ${activeToken.name} • ${activeToken.symbol} • supply: ${activeToken.totalSupply}`;
+  brandSub.textContent = "Onyx token hub — live rich lists + DEX culture experiments on Xahau.";
   heroDesc.textContent = activeToken.description || "Onyx token.";
 
   statSupply.textContent = String(activeToken.totalSupply);
 
   btnExplorer.href = activeToken.explorerUrl || "#";
   btnTokenDetails.href = activeToken.explorerUrl || "#";
+  btnTrustline.href = buildTrustlineUrl(activeToken) || "#";
+  btnTrade.href = buildTradeUrl(activeToken) || "#";
   btnX.href = activeToken.xUrl || "#";
   footExplorer.href = activeToken.explorerUrl || "#";
   footX.href = activeToken.xUrl || "#";
