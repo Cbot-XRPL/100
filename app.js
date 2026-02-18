@@ -41,6 +41,7 @@ const lastUpdateEl = document.getElementById("lastUpdate");
 const onePercentCountEl = document.getElementById("onePercentCount");
 const topHolderPctEl = document.getElementById("topHolderPct");
 const refreshBtn = document.getElementById("refreshBtn");
+const clearCacheBtn = document.getElementById("clearCacheBtn");
 const loadAllBtn = document.getElementById("loadAllBtn");
 const chips = Array.from(document.querySelectorAll(".chip[data-filter]"));
 
@@ -103,11 +104,90 @@ let feedEvents = []; // newest first
 const FEED_RENDER_LIMIT = 20;
 const FEED_STORE_LIMIT = 60;
 const DEFAULT_TABLE_RENDER_LIMIT = 100;
+const DEFAULT_RICHLIST_CACHE_TTL_MS = 120000;
 let showAllRows = false;
 
 function getTableRenderLimit(){
   const n = Number(activeToken?.renderLimit);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_TABLE_RENDER_LIMIT;
+}
+function getRichlistCacheTtlMs(token){
+  const sec = Number(token?.cacheTtlSec);
+  return Number.isFinite(sec) && sec > 0 ? Math.floor(sec * 1000) : DEFAULT_RICHLIST_CACHE_TTL_MS;
+}
+function getRichlistCacheKey(token){
+  const id = token?.id || `${token?.issuer || "issuer"}:${token?.symbol || "token"}`;
+  return `onyx.richlist.${id}`;
+}
+function readRichlistCache(token){
+  try{
+    const raw = localStorage.getItem(getRichlistCacheKey(token));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.holders) || !Number.isFinite(parsed.ts)) return null;
+    return parsed;
+  }catch{
+    return null;
+  }
+}
+function writeRichlistCache(token, holders){
+  try{
+    localStorage.setItem(getRichlistCacheKey(token), JSON.stringify({
+      ts: Date.now(),
+      holders
+    }));
+  }catch{
+    // ignore storage quota / privacy mode errors
+  }
+}
+function clearRichlistCache(token){
+  try{
+    localStorage.removeItem(getRichlistCacheKey(token));
+    return true;
+  }catch{
+    return false;
+  }
+}
+function getExcludedAddressSet(token){
+  const set = new Set();
+  const list = Array.isArray(token?.excludedAddresses) ? token.excludedAddresses : [];
+  for (const addr of list){
+    const v = String(addr || "").trim();
+    if (v) set.add(v);
+  }
+  if (token?.excludeIssuer && token?.issuer){
+    set.add(String(token.issuer).trim());
+  }
+  return set;
+}
+function getTokenCurrency(token){
+  return token?.currency || token?.symbol || "";
+}
+function getTokenLogoUrl(token){
+  if (token?.logoUrl) return token.logoUrl;
+  if (token?.issuer) return `https://cdn.bithomp.com/avatar/${encodeURIComponent(token.issuer)}`;
+  return "";
+}
+function setTokenLogo(elm, token, fallbackText){
+  if (!elm) return;
+  const logoUrl = getTokenLogoUrl(token);
+  if (!logoUrl){
+    elm.textContent = fallbackText;
+    return;
+  }
+  elm.innerHTML = "";
+  const img = document.createElement("img");
+  img.className = "tokenLogoImg";
+  img.src = logoUrl;
+  img.alt = `${token?.name || token?.symbol || "Token"} logo`;
+  img.loading = "lazy";
+  img.decoding = "async";
+  img.referrerPolicy = "no-referrer";
+  img.onerror = () => {
+    elm.innerHTML = "";
+    elm.textContent = fallbackText;
+  };
+  elm.appendChild(img);
 }
 
 /* ===== Utils ===== */
@@ -165,9 +245,9 @@ function startLoadBarTimer(){
   loadBarTimer = setInterval(() => {
     // Move toward server-informed target, but never stop moving.
     if (loadBarProgress < loadBarTarget){
-      loadBarProgress += Math.max(0.45, (loadBarTarget - loadBarProgress) * 0.07);
+      loadBarProgress += Math.max(0.28, (loadBarTarget - loadBarProgress) * 0.05);
     } else {
-      loadBarProgress += 0.24 + Math.random() * 0.12;
+      loadBarProgress += 0.12 + Math.random() * 0.07;
     }
 
     // Full cycle behavior: fill completely, then restart from empty.
@@ -175,7 +255,7 @@ function startLoadBarTimer(){
       loadBarProgress = 0;
     }
     if (loadBar) loadBar.style.width = `${loadBarProgress}%`;
-  }, 90);
+  }, 120);
 }
 
 function setRichListLoading(isLoading){
@@ -488,7 +568,7 @@ function wsRequest(ws, payload){
 }
 
 /* ===== Rich list via account_lines ===== */
-async function fetchHoldersFromWS({ wsUrl, issuer, currency, limitPerPage=400, onProgress }){
+async function fetchHoldersFromWS({ wsUrl, issuer, currency, excludedAddresses, limitPerPage=400, onProgress }){
   const ws = new WebSocket(wsUrl);
 
   await new Promise((resolve, reject) => {
@@ -524,7 +604,7 @@ async function fetchHoldersFromWS({ wsUrl, issuer, currency, limitPerPage=400, o
         // issuer view is usually negative when others hold the token
         const holderBal = Math.max(0, -issuerPerspectiveBal);
 
-        if (holder && holderBal > 0){
+        if (holder && holderBal > 0 && !excludedAddresses?.has(holder)){
           holdersMap.set(holder, (holdersMap.get(holder) || 0) + holderBal);
         }
       }
@@ -533,7 +613,9 @@ async function fetchHoldersFromWS({ wsUrl, issuer, currency, limitPerPage=400, o
       if (!marker) break;
     }
 
-    const holders = Array.from(holdersMap.entries()).map(([address, balance]) => ({ address, balance }));
+    const holders = Array.from(holdersMap.entries())
+      .filter(([address]) => !excludedAddresses?.has(address))
+      .map(([address, balance]) => ({ address, balance }));
     holders.sort((a,b) => b.balance - a.balance);
     return holders;
   } finally {
@@ -542,16 +624,40 @@ async function fetchHoldersFromWS({ wsUrl, issuer, currency, limitPerPage=400, o
 }
 
 /* ===== Load holders ===== */
-async function loadHolders(){
+async function loadHolders({ forceNetwork = false } = {}){
+  const ttlMs = getRichlistCacheTtlMs(activeToken);
+  const cached = forceNetwork ? null : readRichlistCache(activeToken);
+  const now = Date.now();
+  const hasCached = Boolean(cached?.holders?.length);
+  const cachedAgeMs = cached ? Math.max(0, now - cached.ts) : 0;
+  const cacheFresh = cached && cachedAgeMs <= ttlMs;
+
+  if (hasCached){
+    allHolders = normalizeHolders(cached.holders);
+    if (allHolders.length) allHolders[allHolders.length - 1].isLast = true;
+    renderTable();
+    computeStats();
+    const ageSec = Math.floor(cachedAgeMs / 1000);
+    if (cacheFresh){
+      setStatus(true, `cached (${ageSec}s old)`);
+      setRichListLoading(false);
+      return;
+    }
+    setStatus(true, `cached (${ageSec}s old), refreshing...`);
+  } else {
+    setStatus(true, "loading...");
+    rowsEl.innerHTML = `<tr><td colspan="5" style="padding:16px 8px; color:rgba(255,255,255,.70)">Loading rich list...</td></tr>`;
+  }
+
   setRichListLoading(true);
-  setStatus(true, "loading..." );
-  rowsEl.innerHTML = `<tr><td colspan="5" style="padding:16px 8px; color:rgba(255,255,255,.70)">Loading rich list...</td></tr>`;
 
   try{
+    const excludedAddresses = getExcludedAddressSet(activeToken);
     const holders = await fetchHoldersFromWS({
       wsUrl: activeToken.ws,
       issuer: activeToken.issuer,
-      currency: activeToken.symbol,
+      currency: getTokenCurrency(activeToken),
+      excludedAddresses,
       limitPerPage: 400,
       onProgress: ({ page, hasMore }) => {
         const pageBasedPct = 18 + (1 - Math.exp(-page * 0.38)) * 70;
@@ -559,13 +665,18 @@ async function loadHolders(){
       },
     });
 
+    writeRichlistCache(activeToken, holders);
     allHolders = normalizeHolders(holders);
     if (allHolders.length) allHolders[allHolders.length - 1].isLast = true;
 
     setStatus(true, "live data (ledger)");
   }catch{
-    allHolders = normalizeHolders([]);
-    setStatus(false, "failed (ws)");
+    if (!hasCached){
+      allHolders = normalizeHolders([]);
+      setStatus(false, "failed (ws)");
+    } else {
+      setStatus(false, "refresh failed, showing cached");
+    }
   } finally {
     renderTable();
     computeStats();
@@ -608,7 +719,7 @@ function extractTokenDeltasFromMeta(msg, token){
     const finBalObj = fin.Balance;
     if (!prevBalObj || !finBalObj) continue;
 
-    if (finBalObj.currency !== token.symbol || finBalObj.issuer !== token.issuer) continue;
+    if (finBalObj.currency !== getTokenCurrency(token) || finBalObj.issuer !== token.issuer) continue;
 
     const low = fin?.LowLimit?.issuer;
     const high = fin?.HighLimit?.issuer;
@@ -808,11 +919,11 @@ function startFeed(){
 
 function buildTrustlineUrl(token){
 
-  return `https://xahau.services/?issuer=${encodeURIComponent(token.issuer || "")}&currency=${encodeURIComponent(token.symbol || "")}&limit=${encodeURIComponent(String(token.totalSupply || ""))}`;
+  return `https://xahau.services/?issuer=${encodeURIComponent(token.issuer || "")}&currency=${encodeURIComponent(getTokenCurrency(token))}&limit=${encodeURIComponent(String(token.totalSupply || ""))}`;
 }
 
 function buildTradeUrl(token){
-  return `https://xmagnetic.org/trade?issuer=${encodeURIComponent(token.issuer || "")}&currency=${encodeURIComponent(token.symbol || "")}&limit=${encodeURIComponent(String(token.totalSupply || ""))}`;
+  return `https://xmagnetic.org/trade?issuer=${encodeURIComponent(token.issuer || "")}&currency=${encodeURIComponent(getTokenCurrency(token))}&limit=${encodeURIComponent(String(token.totalSupply || ""))}`;
 
 }
 
@@ -836,9 +947,9 @@ function applyTokenToUI(){
   if (!activeToken) return;
 
   document.title = `Onyx — ${activeToken.name}`;
-  brandEmoji.textContent = activeToken.logo || "🖤";
-  heroEmoji.textContent = activeToken.logo || "🖤";
-  statEmoji.textContent = activeToken.logo || "🖤";
+  setTokenLogo(brandEmoji, activeToken, activeToken.logo || "🖤");
+  setTokenLogo(heroEmoji, activeToken, activeToken.logo || "🖤");
+  setTokenLogo(statEmoji, activeToken, activeToken.logo || "🖤");
 
   heroName.textContent = activeToken.name || activeToken.id;
 
@@ -899,7 +1010,14 @@ chips.forEach(chip => {
   });
 });
 
-refreshBtn.addEventListener("click", () => loadHolders());
+refreshBtn.addEventListener("click", () => loadHolders({ forceNetwork: true }));
+if (clearCacheBtn){
+  clearCacheBtn.addEventListener("click", async () => {
+    const ok = clearRichlistCache(activeToken);
+    showToast(ok ? "Cache cleared" : "Cache clear failed");
+    await loadHolders({ forceNetwork: true });
+  });
+}
 if (loadAllBtn){
   loadAllBtn.addEventListener("click", () => {
     showAllRows = !showAllRows;
