@@ -353,6 +353,9 @@ function fmtPrice(n){
 function pctOfSupply(balance){
   return (balance / activeToken.totalSupply) * 100;
 }
+function buildAccountExplorerUrl(address){
+  return `https://xahauexplorer.com/en/account/${encodeURIComponent(address || "")}`;
+}
 function showToast(msg){
   const t = document.getElementById("toast");
   t.textContent = msg;
@@ -516,12 +519,12 @@ function renderTable(){
     const code = el("code", null, holder.address);
     code.title = holder.address;
 
-    const copyBtn = el("button","copy","Copy");
-    copyBtn.type = "button";
-    copyBtn.addEventListener("click", async () => {
-      try{ await navigator.clipboard.writeText(holder.address); showToast("Copied address"); }
-      catch{ showToast("Copy blocked"); }
-    });
+    const copyBtn = document.createElement("a");
+    copyBtn.className = "copy";
+    copyBtn.textContent = "Explorer";
+    copyBtn.href = buildAccountExplorerUrl(holder.address);
+    copyBtn.target = "_blank";
+    copyBtn.rel = "noreferrer";
 
     addrWrap.appendChild(code);
     addrWrap.appendChild(copyBtn);
