@@ -43,7 +43,7 @@
     renderLimit: 100,
     cacheTtlSec: 120,
     excludeIssuer: false,
-    excludedAddresses: [],
+    excludedAddresses: ["rHktfGUbjqzU4GsYCMc1pDjdHXb5CJamto","ra9g3LAJm9xJu8Awe7oWzR6VXFB1mpFtSe","rmv53yu8Wid6kj6AC6NvmiwSXNxRa8vTH"],
     logo: "EVR",
     theme: "evernode",
     ws: "wss://xahau.network",
