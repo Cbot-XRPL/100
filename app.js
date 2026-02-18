@@ -25,6 +25,8 @@ const statEmoji = document.getElementById("statEmoji");
 
 const btnExplorer = document.getElementById("btnExplorer");
 const btnTokenDetails = document.getElementById("btnTokenDetails");
+const btnTrustline = document.getElementById("btnTrustline");
+const btnTrade = document.getElementById("btnTrade");
 const btnX = document.getElementById("btnX");
 const footExplorer = document.getElementById("footExplorer");
 const footX = document.getElementById("footX");
@@ -698,6 +700,15 @@ function startFeed(){
   ws.addEventListener("error", () => setFeedStatus(false, "ws error"));
 }
 
+
+function buildTrustlineUrl(token){
+  return `https://xahau.services/?issuer=${encodeURIComponent(token.issuer || "")}&currency=${encodeURIComponent(token.symbol || "")}&limit=${encodeURIComponent(String(token.totalSupply || ""))}`;
+}
+
+function buildTradeUrl(token){
+  return `https://xmagnetic.org/trade?issuer=${encodeURIComponent(token.issuer || "")}&currency=${encodeURIComponent(token.symbol || "")}&limit=${encodeURIComponent(String(token.totalSupply || ""))}`;
+}
+
 /* ===== Token UI wiring ===== */
 function setPills(){
   pillRow.innerHTML = "";
@@ -723,13 +734,15 @@ function applyTokenToUI(){
   statEmoji.textContent = activeToken.logo || "🖤";
 
   heroName.textContent = activeToken.name || activeToken.id;
-  brandSub.textContent = `${activeToken.logo || "🖤"} ${activeToken.name} • ${activeToken.symbol} • supply: ${activeToken.totalSupply}`;
+  brandSub.textContent = "Onyx token hub — live rich lists + DEX culture experiments on Xahau.";
   heroDesc.textContent = activeToken.description || "Onyx token.";
 
   statSupply.textContent = String(activeToken.totalSupply);
 
   btnExplorer.href = activeToken.explorerUrl || "#";
   btnTokenDetails.href = activeToken.explorerUrl || "#";
+  btnTrustline.href = buildTrustlineUrl(activeToken) || "#";
+  btnTrade.href = buildTradeUrl(activeToken) || "#";
   btnX.href = activeToken.xUrl || "#";
   footExplorer.href = activeToken.explorerUrl || "#";
   footX.href = activeToken.xUrl || "#";
