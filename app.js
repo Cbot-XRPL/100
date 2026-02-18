@@ -1092,7 +1092,7 @@ function setPills(){
 function applyTokenToUI(){
   if (!activeToken) return;
 
-  document.title = `Onyx — ${activeToken.name}`;
+  document.title = `Onyx Hub — ${activeToken?.symbol || activeToken?.name || "100"}`;
   setTokenLogo(brandEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
   setTokenLogo(heroEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
   setTokenLogo(statEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
