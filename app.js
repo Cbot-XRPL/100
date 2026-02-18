@@ -703,7 +703,7 @@ function startFeed(){
 
 function buildTrustlineUrl(token){
 
-  return `https://xmagnetic.org/trustline?issuer=${encodeURIComponent(token.issuer || "")}&currency=${encodeURIComponent(token.symbol || "")}&limit=${encodeURIComponent(String(token.totalSupply || ""))}`;
+  return `https://xahau.services/?issuer=${encodeURIComponent(token.issuer || "")}&currency=${encodeURIComponent(token.symbol || "")}&limit=${encodeURIComponent(String(token.totalSupply || ""))}`;
 }
 
 function buildTradeUrl(token){
