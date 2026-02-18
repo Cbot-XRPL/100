@@ -723,7 +723,7 @@ function applyTokenToUI(){
   statEmoji.textContent = activeToken.logo || "🖤";
 
   heroName.textContent = activeToken.name || activeToken.id;
-  brandSub.textContent = `${activeToken.logo || "🖤"} ${activeToken.name} • ${activeToken.symbol} • supply: ${activeToken.totalSupply}`;
+  brandSub.textContent = "Onyx token hub — live rich lists + DEX culture experiments on Xahau.";
   heroDesc.textContent = activeToken.description || "Onyx token.";
 
   statSupply.textContent = String(activeToken.totalSupply);
