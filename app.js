@@ -12,6 +12,9 @@
 
 /* ===== DOM ===== */
 const emojiField = document.getElementById("emojiField");
+const loadBarWrap = document.getElementById("loadBarWrap");
+const loadBar = document.getElementById("loadBar");
+const loadBarText = document.getElementById("loadBarText");
 
 const tokenSelect = document.getElementById("tokenSelect");
 const brandEmoji = document.getElementById("brandEmoji");
@@ -38,6 +41,7 @@ const lastUpdateEl = document.getElementById("lastUpdate");
 const onePercentCountEl = document.getElementById("onePercentCount");
 const topHolderPctEl = document.getElementById("topHolderPct");
 const refreshBtn = document.getElementById("refreshBtn");
+const loadAllBtn = document.getElementById("loadAllBtn");
 const chips = Array.from(document.querySelectorAll(".chip[data-filter]"));
 
 const whaleRow = document.getElementById("whaleRow");
@@ -98,6 +102,13 @@ let feedEvents = []; // newest first
 // Feed limits (keep mobile light)
 const FEED_RENDER_LIMIT = 20;
 const FEED_STORE_LIMIT = 60;
+const DEFAULT_TABLE_RENDER_LIMIT = 100;
+let showAllRows = false;
+
+function getTableRenderLimit(){
+  const n = Number(activeToken?.renderLimit);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_TABLE_RENDER_LIMIT;
+}
 
 /* ===== Utils ===== */
 function shortAddr(a){
@@ -129,6 +140,67 @@ function setStatus(ok, msg){
 function setFeedStatus(ok, msg){
   feedStatus.textContent = msg;
   feedStatus.style.color = ok ? "rgba(255,255,255,.75)" : "rgba(255,213,74,.85)";
+}
+let loadBarTimer = null;
+let loadBarProgress = 0;
+let loadBarTarget = 0;
+const LOAD_BAR_TARGET_MAX = 98;
+
+function stopLoadBarTimer(){
+  if (!loadBarTimer) return;
+  clearInterval(loadBarTimer);
+  loadBarTimer = null;
+}
+
+function setLoadBarTarget(nextTarget){
+  const clamped = Math.max(0, Math.min(LOAD_BAR_TARGET_MAX, Number(nextTarget) || 0));
+  loadBarTarget = Math.max(loadBarTarget, clamped);
+}
+
+function startLoadBarTimer(){
+  stopLoadBarTimer();
+  loadBarProgress = 0;
+  loadBarTarget = 6;
+  if (loadBar) loadBar.style.width = `${loadBarProgress}%`;
+  loadBarTimer = setInterval(() => {
+    // Move toward server-informed target, but never stop moving.
+    if (loadBarProgress < loadBarTarget){
+      loadBarProgress += Math.max(0.45, (loadBarTarget - loadBarProgress) * 0.07);
+    } else {
+      loadBarProgress += 0.24 + Math.random() * 0.12;
+    }
+
+    // Full cycle behavior: fill completely, then restart from empty.
+    if (loadBarProgress >= 100){
+      loadBarProgress = 0;
+    }
+    if (loadBar) loadBar.style.width = `${loadBarProgress}%`;
+  }, 90);
+}
+
+function setRichListLoading(isLoading){
+  if (!loadBarWrap) return;
+  if (isLoading){
+    loadBarWrap.classList.add("active");
+    loadBarWrap.setAttribute("aria-hidden", "false");
+    startLoadBarTimer();
+    if (loadBarText){
+      loadBarText.textContent = `Loading ${activeToken?.symbol || "token"} rich list...`;
+    }
+    return;
+  }
+
+  stopLoadBarTimer();
+  loadBarTarget = 100;
+  if (loadBar) loadBar.style.width = "100%";
+  if (loadBarText) loadBarText.textContent = "Rich list loaded";
+
+  setTimeout(() => {
+    loadBarWrap.classList.remove("active");
+    loadBarWrap.setAttribute("aria-hidden", "true");
+    if (loadBar) loadBar.style.width = "0%";
+    if (loadBarText) loadBarText.textContent = "Loading rich list...";
+  }, 280);
 }
 function el(tag, cls, text){
   const n = document.createElement(tag);
@@ -199,7 +271,9 @@ function filterHolders(list, q, filter){
 }
 function renderTable(){
   const q = searchEl.value || "";
-  const displayList = filterHolders(allHolders, q, activeFilter);
+  const tableRenderLimit = getTableRenderLimit();
+  const filteredList = filterHolders(allHolders, q, activeFilter);
+  const displayList = showAllRows ? filteredList : filteredList.slice(0, tableRenderLimit);
 
   const lastAddress = allHolders[allHolders.length - 1]?.address;
   const lastSet = new Set(lastAddress ? [lastAddress] : []);
@@ -258,6 +332,28 @@ function renderTable(){
     td.textContent = "No matches.";
     tr.appendChild(td);
     rowsEl.appendChild(tr);
+  } else if (!showAllRows && filteredList.length > tableRenderLimit){
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 5;
+    td.style.color = "rgba(255,255,255,.70)";
+    td.style.padding = "16px 8px";
+    td.textContent = `Showing first ${tableRenderLimit} of ${filteredList.length} holders. Click Load All to render everything.`;
+    tr.appendChild(td);
+    rowsEl.appendChild(tr);
+  }
+
+  if (loadAllBtn){
+    if (showAllRows){
+      loadAllBtn.textContent = `Show Top ${tableRenderLimit}`;
+      loadAllBtn.disabled = false;
+    } else if (filteredList.length > tableRenderLimit){
+      loadAllBtn.textContent = `Load All (${filteredList.length})`;
+      loadAllBtn.disabled = false;
+    } else {
+      loadAllBtn.textContent = "All Loaded";
+      loadAllBtn.disabled = true;
+    }
   }
 }
 
@@ -392,7 +488,7 @@ function wsRequest(ws, payload){
 }
 
 /* ===== Rich list via account_lines ===== */
-async function fetchHoldersFromWS({ wsUrl, issuer, currency, limitPerPage=400 }){
+async function fetchHoldersFromWS({ wsUrl, issuer, currency, limitPerPage=400, onProgress }){
   const ws = new WebSocket(wsUrl);
 
   await new Promise((resolve, reject) => {
@@ -403,6 +499,7 @@ async function fetchHoldersFromWS({ wsUrl, issuer, currency, limitPerPage=400 })
   try{
     let marker = undefined;
     const holdersMap = new Map();
+    let page = 0;
 
     while (true){
       const req = {
@@ -414,6 +511,8 @@ async function fetchHoldersFromWS({ wsUrl, issuer, currency, limitPerPage=400 })
       if (marker) req.marker = marker;
 
       const result = await wsRequest(ws, req);
+      page += 1;
+      onProgress?.({ page, hasMore: Boolean(result.marker) });
       const lines = result.lines || [];
 
       for (const line of lines){
@@ -444,8 +543,9 @@ async function fetchHoldersFromWS({ wsUrl, issuer, currency, limitPerPage=400 })
 
 /* ===== Load holders ===== */
 async function loadHolders(){
-  setStatus(true, "loading…");
-  rowsEl.innerHTML = `<tr><td colspan="5" style="padding:16px 8px; color:rgba(255,255,255,.70)">Loading rich list…</td></tr>`;
+  setRichListLoading(true);
+  setStatus(true, "loading..." );
+  rowsEl.innerHTML = `<tr><td colspan="5" style="padding:16px 8px; color:rgba(255,255,255,.70)">Loading rich list...</td></tr>`;
 
   try{
     const holders = await fetchHoldersFromWS({
@@ -453,6 +553,10 @@ async function loadHolders(){
       issuer: activeToken.issuer,
       currency: activeToken.symbol,
       limitPerPage: 400,
+      onProgress: ({ page, hasMore }) => {
+        const pageBasedPct = 18 + (1 - Math.exp(-page * 0.38)) * 70;
+        setLoadBarTarget(hasMore ? pageBasedPct : 96);
+      },
     });
 
     allHolders = normalizeHolders(holders);
@@ -462,10 +566,11 @@ async function loadHolders(){
   }catch{
     allHolders = normalizeHolders([]);
     setStatus(false, "failed (ws)");
+  } finally {
+    renderTable();
+    computeStats();
+    setRichListLoading(false);
   }
-
-  renderTable();
-  computeStats();
 }
 
 /* ===== BUY/SELL + Price feed via meta deltas ===== */
@@ -773,6 +878,7 @@ function initTokenSelector(){
     const id = tokenSelect.value;
     const next = TOKENS.find(t => t.id === id) || TOKENS[0];
     activeToken = next;
+    showAllRows = false;
 
     applyTokenToUI();
     await loadHolders();
@@ -788,11 +894,18 @@ chips.forEach(chip => {
     chips.forEach(c => c.classList.remove("active"));
     chip.classList.add("active");
     activeFilter = chip.dataset.filter;
+    showAllRows = false;
     renderTable();
   });
 });
 
 refreshBtn.addEventListener("click", () => loadHolders());
+if (loadAllBtn){
+  loadAllBtn.addEventListener("click", () => {
+    showAllRows = !showAllRows;
+    renderTable();
+  });
+}
 feedReconnect.addEventListener("click", () => startFeed());
 
 /* ===== Boot ===== */
