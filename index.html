@@ -3,32 +3,42 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
   <title>Onyx — Token Hub</title>
   <meta name="description" content="Onyx token hub — live rich lists + DEX culture experiments on Xahau." />
+
   <link rel="stylesheet" href="./styles.css" />
   <link rel="icon" href="data:," />
 </head>
 
 <body>
+  <noscript>
+    <div style="padding:12px;max-width:980px;margin:12px auto;border:1px solid rgba(255,255,255,.15);border-radius:12px;">
+      This site needs JavaScript enabled to load token data and the live feed.
+    </div>
+  </noscript>
+
   <div id="emojiField" aria-hidden="true"></div>
 
   <div class="wrap">
     <header>
-      <div class="brand">
-        <div class="logo" title="Onyx"><span class="hoverable" id="brandEmoji">💯</span></div>
+      <div class="brand" role="banner">
+        <div class="logo" title="Onyx">
+          <span class="hoverable" id="brandEmoji" aria-label="Brand emoji">💯</span>
+        </div>
         <div class="titles">
-          <div class="top">Onyx Chamber</div>
-          <div class="sub" id="brandSub">Loading token…</div>
+          <div class="top">Onyx Token Hub</div>
+          <div class="sub" id="brandSub" aria-live="polite">Loading token…</div>
         </div>
       </div>
 
       <div class="rightHeader">
         <div class="tokenPicker">
-          <div class="tokenPickerLabel">Token</div>
-          <select id="tokenSelect" aria-label="Select token"></select>
+          <div class="tokenPickerLabel" id="tokenPickerLabel">Token</div>
+          <select id="tokenSelect" aria-labelledby="tokenPickerLabel" aria-label="Select token"></select>
         </div>
 
-        <nav class="links">
+        <nav class="links" aria-label="Primary">
           <a class="btn primary" id="btnExplorer" href="#" target="_blank" rel="noreferrer">
             <span class="dot"></span> Explorer
           </a>
@@ -38,10 +48,13 @@
       </div>
     </header>
 
-    <section class="hero">
+    <section class="hero" aria-label="Token overview">
       <div class="heroGrid">
         <div>
-          <h1><span class="emojiBig hoverable" id="heroEmoji">💯</span><span id="heroName">100</span></h1>
+          <h1>
+            <span class="emojiBig hoverable" id="heroEmoji" aria-label="Token emoji">💯</span>
+            <span id="heroName">100</span>
+          </h1>
           <p id="heroDesc">Loading…</p>
 
           <div class="pillRow" id="pillRow"></div>
@@ -52,7 +65,7 @@
           </div>
         </div>
 
-        <aside class="cardRight">
+        <aside class="cardRight" aria-label="Key stats">
           <div>
             <div class="accentLine"></div>
             <div class="statGrid">
@@ -82,7 +95,7 @@
       </div>
     </section>
 
-    <section class="grid2">
+    <section class="grid2" aria-label="Analytics panels">
       <div class="panel">
         <div class="panelHead">
           <h2>Whale Dominance</h2>
@@ -97,14 +110,14 @@
       <div class="panel">
         <div class="panelHead">
           <h2>Decentralization Score</h2>
-          <div class="meta"><span class="hoverable">🖤</span></div>
+          <div class="meta"><span class="hoverable" aria-hidden="true">🖤</span></div>
         </div>
         <div class="panelBody">
           <div class="bigScore">
             <div class="scoreNum" id="decentScore">—</div>
             <div class="scoreSub" id="decentExplain">—</div>
           </div>
-          <div class="barWrap">
+          <div class="barWrap" aria-label="Decentralization bar">
             <div class="barFill" id="decentBar" style="width:0%"></div>
           </div>
           <div class="miniNote">Simple Onyx metric: higher = more distributed.</div>
@@ -134,47 +147,47 @@
       </div>
     </section>
 
-    <section class="panel" id="feed">
+    <section class="panel" id="feed" aria-label="Live activity feed">
       <div class="panelHead">
         <h2>Live Activity Feed</h2>
         <div class="meta">
-          <span id="feedStatus">connecting…</span>
-          <span>•</span>
-          <span class="hoverable">📡</span>
+          <span id="feedStatus" aria-live="polite">connecting…</span>
+          <span aria-hidden="true">•</span>
+          <span class="hoverable" aria-hidden="true">📡</span>
         </div>
       </div>
       <div class="panelBody">
         <div class="feedControls">
           <div class="miniNote">BUY/SELL is computed from trustline balance deltas in transaction meta (no backend).</div>
-          <button class="chip" id="feedReconnect">Reconnect</button>
+          <button class="chip" id="feedReconnect" type="button">Reconnect</button>
         </div>
 
         <div class="feedList" id="feedList"></div>
       </div>
     </section>
 
-    <section class="panel" id="richlist">
+    <section class="panel" id="richlist" aria-label="Rich list table">
       <div class="panelHead">
         <h2>Rich List</h2>
         <div class="meta">
-          <span id="dataStatus">loading…</span>
-          <span>•</span>
-          <span class="hoverable">💯</span>
+          <span id="dataStatus" aria-live="polite">loading…</span>
+          <span aria-hidden="true">•</span>
+          <span class="hoverable" aria-hidden="true">💯</span>
         </div>
       </div>
 
       <div class="panelBody">
         <div class="controls">
           <div class="search">
-            <input id="search" type="search" placeholder="Search address (r...)" autocomplete="off" />
+            <input id="search" type="search" placeholder="Search address (r...)" autocomplete="off" aria-label="Search address" />
           </div>
 
-          <div class="toggleRow">
-            <div class="chip active" data-filter="all">All</div>
-            <div class="chip" data-filter="club">1% Club</div>
-            <div class="chip" data-filter="top3">Top 3</div>
-            <div class="chip" data-filter="last">Last</div>
-            <div class="chip" id="refreshBtn">Refresh</div>
+          <div class="toggleRow" role="tablist" aria-label="Filters">
+            <div class="chip active" data-filter="all" role="tab" aria-selected="true">All</div>
+            <div class="chip" data-filter="club" role="tab" aria-selected="false">1% Club</div>
+            <div class="chip" data-filter="top3" role="tab" aria-selected="false">Top 3</div>
+            <div class="chip" data-filter="last" role="tab" aria-selected="false">Last</div>
+            <div class="chip" id="refreshBtn" role="button" tabindex="0">Refresh</div>
           </div>
         </div>
 
@@ -200,15 +213,16 @@
             • Social:
             <a id="footX" href="#" target="_blank" rel="noreferrer">X</a>
           </div>
-          <div><span class="mono">Onyx</span> • experimental </div>
+          <div><span class="mono">Onyx</span> • experimental</div>
         </div>
       </div>
     </section>
   </div>
 
-  <div id="toast"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
 
-  <script src="./tokens.js"></script>
-  <script src="./app.js"></script>
+  <!-- Defer so HTML paints first -->
+  <script src="./tokens.js" defer></script>
+  <script src="./app.js" defer></script>
 </body>
 </html>
