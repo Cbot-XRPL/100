@@ -723,7 +723,9 @@ function applyTokenToUI(){
   statEmoji.textContent = activeToken.logo || "🖤";
 
   heroName.textContent = activeToken.name || activeToken.id;
-  brandSub.textContent = `${activeToken.logo || "🖤"} ${activeToken.name} • ${activeToken.symbol} • supply: ${activeToken.totalSupply}`;
+  if (brandSub) {
+    brandSub.textContent = `${activeToken.logo || "🖤"} ${activeToken.name} • ${activeToken.symbol} • supply: ${activeToken.totalSupply}`;
+  }
   heroDesc.textContent = activeToken.description || "Onyx token.";
 
   statSupply.textContent = String(activeToken.totalSupply);
