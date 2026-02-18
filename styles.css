@@ -81,10 +81,12 @@ header{
 }
 .brand .titles .tagline{
   display:block;
+
   font-size:12px;
   color:rgba(255,255,255,.86);
   letter-spacing:.2px;
   line-height:1.25;
+
 }
 .brand .titles .sub{
   font-size:12px; color:var(--muted); font-family:var(--mono);
