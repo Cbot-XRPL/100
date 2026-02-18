@@ -702,13 +702,13 @@ function startFeed(){
 
 
 function buildTrustlineUrl(token){
-  if (token.trustlineUrl) return token.trustlineUrl;
-  return `https://xmagnetic.org/trustline?issuer=${encodeURIComponent(token.issuer || "")}&currency=${encodeURIComponent(token.symbol || "")}`;
+
+  return `https://xahau.services/?issuer=${encodeURIComponent(token.issuer || "")}&currency=${encodeURIComponent(token.symbol || "")}&limit=${encodeURIComponent(String(token.totalSupply || ""))}`;
 }
 
 function buildTradeUrl(token){
-  if (token.tradeUrl) return token.tradeUrl;
-  return `https://xmagnetic.org/trade?issuer=${encodeURIComponent(token.issuer || "")}&currency=${encodeURIComponent(token.symbol || "")}`;
+  return `https://xmagnetic.org/trade?issuer=${encodeURIComponent(token.issuer || "")}&currency=${encodeURIComponent(token.symbol || "")}&limit=${encodeURIComponent(String(token.totalSupply || ""))}`;
+
 }
 
 /* ===== Token UI wiring ===== */
@@ -738,7 +738,9 @@ function applyTokenToUI(){
   heroName.textContent = activeToken.name || activeToken.id;
 
 
+
   brandSub.textContent = "Live rich lists + DEX culture experiments on Xahau.";
+
 
   heroDesc.textContent = activeToken.description || "Onyx token.";
 
