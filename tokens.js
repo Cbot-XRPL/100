@@ -1,4 +1,28 @@
-﻿window.ONYX_TOKENS = [
+window.ONYX_TOKENS = [
+  {
+    id: "xah",
+    name: "Xahau",
+    symbol: "XAH",
+    nativeXah: true,
+    issuer: "",
+    currency: "XAH",
+    totalSupply: 0,
+    renderLimit: 100,
+    cacheTtlSec: 1800,
+    excludeIssuer: false,
+    excludedAddresses: [],
+    logo: "XAH",
+    theme: "xahau",
+    ws: "wss://xahau.network",
+    explorerUrl: "https://xahauexplorer.com",
+    xUrl: "https://x.com/XahauNetwork",
+    whitepaper: "XAH is the native asset of the Xahau network. This view tracks USD pricing and market context.",
+    whitepaperHtml: "",
+    description:
+      "Native network asset on Xahau, priced directly in USD for this dashboard.",
+    badgeRules: [],
+    whaleTopN: [1, 3, 5, 10],
+  },
   {
     id: "100",
     name: "ONE Hundred",
@@ -100,3 +124,5 @@
     whaleTopN: [1, 3, 5, 10],
   },
 ];
+
+
