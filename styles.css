@@ -464,10 +464,10 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
   padding:4px 8px;
   border-radius:999px;
   color:rgba(255,255,255,.90);
-  white-space:normal;
-  overflow-wrap:anywhere;
-  word-break:break-word;
-  max-width:none;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width:100%;
   display:inline-block;
 }
 .copy{
@@ -539,6 +539,7 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
   grid-template-columns:1fr 1fr;
   gap:10px;
 }
+#liqDepthRow{margin-top:10px}
 .metric{
   padding:12px;
   border-radius:14px;
@@ -630,6 +631,77 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
 .feedTime{font-family:var(--mono); color:rgba(255,255,255,.65); font-size:12px}
 .feedBody{margin-top:8px; color:rgba(255,255,255,.78); font-size:12px; font-family:var(--mono); line-height:1.35}
 .feedAddr{color:rgba(255,255,255,.9)}
+
+/* DEX chart */
+.chartRow{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:6px;
+  align-items:stretch;
+}
+.chartWrap{
+  position:relative;
+  height:180px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(0,0,0,.20);
+  overflow:hidden;
+}
+#dexChart{
+  width:100%;
+  height:100%;
+  display:block;
+}
+#dexChartGrid line{
+  stroke:rgba(255,255,255,.10);
+  stroke-width:.4;
+}
+#dexChartCandles line{
+  stroke:rgba(255,255,255,.52);
+  stroke-width:.42;
+  stroke-linecap:round;
+}
+#dexChartCandles rect{
+  stroke:none;
+}
+.candleUp{fill:rgba(245,212,90,.92)}
+.candleDn{fill:rgba(255,95,95,.90)}
+.chartAxis{
+  position:relative;
+  height:180px;
+  width:72px;
+  pointer-events:none;
+  font-family:var(--mono);
+  font-size:12px;
+  color:rgba(255,255,255,.78);
+}
+.chartAxisTick{
+  position:absolute;
+  right:2px;
+  transform:translateY(-50%);
+  white-space:nowrap;
+  text-shadow:0 1px 0 rgba(0,0,0,.45);
+}
+.chartEmpty{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:rgba(255,255,255,.60);
+  font-family:var(--mono);
+  font-size:12px;
+  text-align:center;
+  padding:8px;
+}
+.chartStats{
+  margin-top:10px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px 16px;
+  color:rgba(255,255,255,.78);
+  font-size:12px;
+}
 
 /* toast */
 #toast{

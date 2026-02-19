@@ -44,7 +44,7 @@ const footX = document.getElementById("footX");
 const rowsEl = document.getElementById("rows");
 const searchEl = document.getElementById("search");
 const dataStatusEl = document.getElementById("dataStatus");
-const lastUpdateEl = document.getElementById("lastUpdate");
+const statPriceUsdEl = document.getElementById("statPriceUsd");
 const onePercentCountEl = document.getElementById("onePercentCount");
 const topHolderPctEl = document.getElementById("topHolderPct");
 const refreshBtn = document.getElementById("refreshBtn");
@@ -54,6 +54,28 @@ const chips = Array.from(document.querySelectorAll(".chip[data-filter]"));
 
 const whaleRow = document.getElementById("whaleRow");
 const whaleMeta = document.getElementById("whaleMeta");
+const liqMeta = document.getElementById("liqMeta");
+const liqScoreEl = document.getElementById("liqScore");
+const liqSpreadEl = document.getElementById("liqSpread");
+const liqBar = document.getElementById("liqBar");
+const liqDepthRow = document.getElementById("liqDepthRow");
+const liqNote = document.getElementById("liqNote");
+const dexChartMeta = document.getElementById("dexChartMeta");
+const dexRange7d = document.getElementById("dexRange7d");
+const dexRange30d = document.getElementById("dexRange30d");
+const dexRange3m = document.getElementById("dexRange3m");
+const dexRange6m = document.getElementById("dexRange6m");
+const dexRange1y = document.getElementById("dexRange1y");
+const dexChartPair = document.getElementById("dexChartPair");
+const dexChartGrid = document.getElementById("dexChartGrid");
+const dexChartCandles = document.getElementById("dexChartCandles");
+const dexChartAxis = document.getElementById("dexChartAxis");
+const dexChartEmpty = document.getElementById("dexChartEmpty");
+const dexChartLow = document.getElementById("dexChartLow");
+const dexChartHigh = document.getElementById("dexChartHigh");
+const dexChartLast = document.getElementById("dexChartLast");
+const dexChartChange = document.getElementById("dexChartChange");
+const dexChartRange = document.getElementById("dexChartRange");
 const decentScoreEl = document.getElementById("decentScore");
 const decentExplainEl = document.getElementById("decentExplain");
 const decentBar = document.getElementById("decentBar");
@@ -113,6 +135,13 @@ const FEED_STORE_LIMIT = 60;
 const DEFAULT_TABLE_RENDER_LIMIT = 100;
 const DEFAULT_RICHLIST_CACHE_TTL_MS = 120000;
 let showAllRows = false;
+let liquidityReqNonce = 0;
+let xahUsdCache = { px: NaN, ts: 0 };
+const LIQUIDITY_POLL_MS = 15000;
+let liquidityPollTimer = null;
+let liquidityBusy = false;
+let dexChartRangeDays = 7;
+let dexChartReqNonce = 0;
 
 function getTableRenderLimit(){
   const n = Number(activeToken?.renderLimit);
@@ -348,6 +377,13 @@ function shortAddr(a){
   if (a.length <= 14) return a;
   return a.slice(0, 6) + "…" + a.slice(-6);
 }
+function displayAddr(a){
+  if (!a) return "";
+  const isMobile = window.matchMedia("(max-width: 768px)").matches;
+  if (!isMobile) return a;
+  if (a.length <= 16) return a;
+  return a.slice(0, 6) + ".." + a.slice(-6);
+}
 function fmt(n){
   const isInt = Math.abs(n - Math.round(n)) < 1e-9;
   return isInt ? String(Math.round(n)) : n.toFixed(4).replace(/0+$/,'').replace(/\.$/,'');
@@ -375,6 +411,494 @@ function setStatus(ok, msg){
 function setFeedStatus(ok, msg){
   feedStatus.textContent = msg;
   feedStatus.style.color = ok ? "rgba(255,255,255,.75)" : "rgba(255,213,74,.85)";
+}
+function setHeroUsdPrice(valueText){
+  if (!statPriceUsdEl) return;
+  statPriceUsdEl.textContent = valueText;
+}
+function renderLiquiditySkeleton(label){
+  renderLiquidityMetrics([
+    { k: "Accessible XAH (2% slip)", v: label || "0" },
+    { k: "Book Imbalance (S/B)", v: label || "0" },
+    { k: "Buy Depth (5% slip)", v: label || "0" },
+    { k: "Sell Depth (5% slip)", v: label || "0" }
+  ]);
+}
+function setLiquidityLoading(msg){
+  if (liqScoreEl) liqScoreEl.textContent = "0";
+  if (liqSpreadEl) liqSpreadEl.textContent = msg || "loading book depth...";
+  if (liqBar) liqBar.style.width = "0%";
+  if (liqMeta) liqMeta.textContent = "loading";
+  renderLiquiditySkeleton("loading");
+}
+function resetLiquidityPanel(msg){
+  if (liqScoreEl) liqScoreEl.textContent = "0";
+  if (liqSpreadEl) liqSpreadEl.textContent = msg || "-";
+  if (liqBar) liqBar.style.width = "0%";
+  if (liqMeta) liqMeta.textContent = "-";
+  renderLiquiditySkeleton("0");
+}
+function parseXahAmount(v){
+  if (v == null) return NaN;
+  if (typeof v === "string"){
+    const drops = Number(v);
+    return Number.isFinite(drops) ? (drops / 1_000_000) : NaN;
+  }
+  if (typeof v === "object"){
+    const val = Number(v.value);
+    return Number.isFinite(val) ? val : NaN;
+  }
+  return NaN;
+}
+function parseTokenAmount(v){
+  if (v == null) return NaN;
+  if (typeof v === "object"){
+    const val = Number(v.value);
+    return Number.isFinite(val) ? val : NaN;
+  }
+  const n = Number(v);
+  return Number.isFinite(n) ? n : NaN;
+}
+function calcDepthFromOffers(offers, side){
+  const rows = [];
+  for (const o of offers || []){
+    const gets = o.taker_gets_funded ?? o.TakerGets;
+    const pays = o.taker_pays_funded ?? o.TakerPays;
+    let tokenAmt = NaN;
+    let xahAmt = NaN;
+
+    if (side === "asks"){
+      tokenAmt = parseTokenAmount(gets);
+      xahAmt = parseXahAmount(pays);
+    } else {
+      tokenAmt = parseTokenAmount(pays);
+      xahAmt = parseXahAmount(gets);
+    }
+
+    if (!Number.isFinite(tokenAmt) || !Number.isFinite(xahAmt) || tokenAmt <= 0 || xahAmt <= 0){
+      continue;
+    }
+
+    rows.push({
+      token: tokenAmt,
+      xah: xahAmt,
+      price: xahAmt / tokenAmt
+    });
+  }
+  return rows;
+}
+function clamp(n, lo, hi){
+  return Math.max(lo, Math.min(hi, n));
+}
+async function fetchXahUsdPrice(){
+  const now = Date.now();
+  if (Number.isFinite(xahUsdCache.px) && (now - xahUsdCache.ts) < 120000){
+    return xahUsdCache.px;
+  }
+  const url = "https://api.coingecko.com/api/v3/simple/price?ids=xahau&vs_currencies=usd";
+  const resp = await fetch(url, { cache: "no-store" });
+  if (!resp.ok) throw new Error("xah usd http");
+  const data = await resp.json();
+  const px = Number(data?.xahau?.usd);
+  if (!Number.isFinite(px) || px <= 0) throw new Error("xah usd invalid");
+  xahUsdCache = { px, ts: now };
+  return px;
+}
+function fmtUsd(n){
+  if (!Number.isFinite(n) || n <= 0) return "-";
+  if (n >= 1) return `$${n.toFixed(4)}`;
+  if (n >= 0.01) return `$${n.toFixed(5)}`;
+  return `$${n.toFixed(7)}`;
+}
+function chartPairBase(token){
+  const c = getTokenCurrency(token);
+  if (!token?.issuer || !c) return "";
+  return `${token.issuer}_${c}`;
+}
+function setDexRangeButtons(){
+  if (dexRange7d){
+    dexRange7d.classList.toggle("active", dexChartRangeDays === 7);
+  }
+  if (dexRange30d){
+    dexRange30d.classList.toggle("active", dexChartRangeDays === 30);
+  }
+  if (dexRange3m){
+    dexRange3m.classList.toggle("active", dexChartRangeDays === 90);
+  }
+  if (dexRange6m){
+    dexRange6m.classList.toggle("active", dexChartRangeDays === 180);
+  }
+  if (dexRange1y){
+    dexRange1y.classList.toggle("active", dexChartRangeDays === 365);
+  }
+}
+function setDexChartPairLabel(token){
+  if (!dexChartPair) return;
+  const sym = token?.symbol || "TOKEN";
+  dexChartPair.textContent = `${sym}/XAH`;
+}
+async function fetchDexChartHistory(token, days){
+  const base = chartPairBase(token);
+  if (!base) return [];
+  const interval = days > 180 ? "1w" : "1d";
+  const limit = days > 180 ? Math.ceil(days / 7) : days;
+  const url = `https://data.xahau.network/v1/iou/market_data/${encodeURIComponent(base)}/XAH?interval=${interval}&limit=${Math.max(1, Math.min(400, limit))}&descending=true`;
+  const resp = await fetch(url, { cache: "no-store" });
+  if (!resp.ok) throw new Error("chart fetch failed");
+  const arr = await resp.json();
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((x) => ({
+      t: Date.parse(x.timestamp),
+      o: Number(x.open),
+      h: Number(x.high),
+      l: Number(x.low),
+      c: Number(x.close)
+    }))
+    .filter((x) =>
+      Number.isFinite(x.t) &&
+      Number.isFinite(x.o) &&
+      Number.isFinite(x.h) &&
+      Number.isFinite(x.l) &&
+      Number.isFinite(x.c) &&
+      x.h > 0 &&
+      x.l > 0
+    )
+    .sort((a, b) => a.t - b.t);
+}
+function fmtPct(n){
+  if (!Number.isFinite(n)) return "-";
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toFixed(2)}%`;
+}
+function renderDexChart(series, xahUsd = NaN){
+  if (!dexChartMeta || !dexChartEmpty || !dexChartLow || !dexChartHigh || !dexChartLast || !dexChartGrid || !dexChartCandles){
+    return;
+  }
+  const hasUsd = Number.isFinite(xahUsd) && xahUsd > 0;
+  const toDisplay = (xah) => hasUsd ? fmtUsd(xah * xahUsd) : `${fmtPrice(xah)} XAH`;
+
+  dexChartGrid.innerHTML = "";
+  dexChartCandles.innerHTML = "";
+  if (dexChartAxis) dexChartAxis.innerHTML = "";
+  if (!series.length){
+    dexChartMeta.textContent = "no data";
+    dexChartEmpty.style.display = "";
+    dexChartEmpty.textContent = "No historical DEX candles found for this pair.";
+    dexChartLow.textContent = "-";
+    dexChartHigh.textContent = "-";
+    dexChartLast.textContent = "-";
+    if (dexChartChange) dexChartChange.textContent = "-";
+    if (dexChartRange) dexChartRange.textContent = "-";
+    return;
+  }
+
+  const highs = series.map((p) => p.h);
+  const lows = series.map((p) => p.l);
+  const minY = Math.min(...lows);
+  const maxY = Math.max(...highs);
+  const span = Math.max(1e-9, maxY - minY);
+  const yFrom = (v) => 93 - ((v - minY) / span) * 86; // [7..93]
+  const ns = "http://www.w3.org/2000/svg";
+
+  const gridLevels = 4;
+  const plotXMin = 0;
+  const plotXMax = 100;
+  for (let i = 0; i < gridLevels; i++){
+    const t = i / (gridLevels - 1); // top -> bottom
+    const y = 7 + (t * 86);
+    const line = document.createElementNS(ns, "line");
+    line.setAttribute("x1", String(plotXMin));
+    line.setAttribute("x2", String(plotXMax));
+    line.setAttribute("y1", y.toFixed(2));
+    line.setAttribute("y2", y.toFixed(2));
+    dexChartGrid.appendChild(line);
+
+    if (dexChartAxis){
+      const valXah = maxY - t * (maxY - minY);
+      const tick = document.createElement("div");
+      tick.className = "chartAxisTick";
+      tick.style.top = `${y.toFixed(2)}%`;
+      tick.textContent = toDisplay(valXah);
+      dexChartAxis.appendChild(tick);
+    }
+  }
+
+  const n = series.length;
+  const plotW = Math.max(1, plotXMax - plotXMin);
+  const step = plotW / n;
+  const bodyW = Math.max(0.4, Math.min(1.5, step * 0.34));
+  for (let i = 0; i < n; i++){
+    const c = series[i];
+    const cx = plotXMin + (i + 0.5) * step;
+    const yH = yFrom(c.h);
+    const yL = yFrom(c.l);
+    const yO = yFrom(c.o);
+    const yC = yFrom(c.c);
+    const top = Math.min(yO, yC);
+    const bot = Math.max(yO, yC);
+    const bodyH = Math.max(0.65, bot - top);
+    const up = c.c >= c.o;
+
+    const wick = document.createElementNS(ns, "line");
+    wick.setAttribute("x1", cx.toFixed(2));
+    wick.setAttribute("x2", cx.toFixed(2));
+    wick.setAttribute("y1", yH.toFixed(2));
+    wick.setAttribute("y2", yL.toFixed(2));
+    dexChartCandles.appendChild(wick);
+
+    const body = document.createElementNS(ns, "rect");
+    body.setAttribute("x", (cx - bodyW / 2).toFixed(2));
+    body.setAttribute("y", top.toFixed(2));
+    body.setAttribute("width", bodyW.toFixed(2));
+    body.setAttribute("height", bodyH.toFixed(2));
+    body.setAttribute("rx", "0.25");
+    body.setAttribute("class", up ? "candleUp" : "candleDn");
+    dexChartCandles.appendChild(body);
+  }
+
+  dexChartEmpty.style.display = "none";
+  dexChartMeta.textContent = `${dexChartRangeDays}D | ${series.length} candles`;
+  const first = series[0].c;
+  const last = series[series.length - 1].c;
+  const changePct = first > 0 ? ((last - first) / first) * 100 : NaN;
+  const rangePct = minY > 0 ? ((maxY - minY) / minY) * 100 : NaN;
+
+  dexChartLow.textContent = toDisplay(minY);
+  dexChartHigh.textContent = toDisplay(maxY);
+  dexChartLast.textContent = toDisplay(last);
+  if (dexChartChange) dexChartChange.textContent = fmtPct(changePct);
+  if (dexChartRange) dexChartRange.textContent = fmtPct(rangePct);
+}
+async function loadDexChartHistory(){
+  const reqNonce = ++dexChartReqNonce;
+  if (!activeToken){
+    renderDexChart([], NaN);
+    return;
+  }
+  setDexRangeButtons();
+  if (dexChartMeta) dexChartMeta.textContent = "loading";
+  if (dexChartEmpty){
+    dexChartEmpty.textContent = "Loading chart...";
+    dexChartEmpty.style.display = "";
+  }
+  try{
+    const [series, xahUsd] = await Promise.all([
+      fetchDexChartHistory(activeToken, dexChartRangeDays),
+      (async () => {
+        try{
+          return await fetchXahUsdPrice();
+        }catch{
+          return Number.isFinite(xahUsdCache.px) ? xahUsdCache.px : NaN;
+        }
+      })()
+    ]);
+    if (reqNonce !== dexChartReqNonce) return;
+    renderDexChart(series, xahUsd);
+  }catch{
+    if (reqNonce !== dexChartReqNonce) return;
+    if (dexChartMeta) dexChartMeta.textContent = "api error";
+    renderDexChart([], NaN);
+  }
+}
+function stopLiquidityPolling(){
+  if (!liquidityPollTimer) return;
+  clearInterval(liquidityPollTimer);
+  liquidityPollTimer = null;
+}
+function startLiquidityPolling(){
+  stopLiquidityPolling();
+  liquidityPollTimer = setInterval(() => {
+    refreshLiquidityPanel();
+  }, LIQUIDITY_POLL_MS);
+}
+function buildLiquidityScore({ accessibleXah, spreadBps, hasTwoSided }){
+  const depthNorm = Math.log10(1 + Math.max(0, accessibleXah)) / Math.log10(1 + 500);
+  const depthScore = clamp(depthNorm * 100, 0, 100);
+  const spreadPenalty = Number.isFinite(spreadBps) ? clamp(spreadBps / 35, 0, 35) : 35;
+  const sidePenalty = hasTwoSided ? 0 : 35;
+  return Math.round(clamp(depthScore - spreadPenalty - sidePenalty + 8, 0, 100));
+}
+function depthBySlippage(asks, bids, bestAsk, bestBid, pct){
+  const buyMax = bestAsk * (1 + pct);
+  const sellMin = bestBid * (1 - pct);
+  let buyDepthXah = 0;
+  let sellDepthXah = 0;
+
+  for (const a of asks){
+    if (a.price <= buyMax) buyDepthXah += a.xah;
+  }
+  for (const b of bids){
+    if (b.price >= sellMin) sellDepthXah += b.xah;
+  }
+
+  return {
+    pct,
+    buyDepthXah,
+    sellDepthXah,
+    accessibleXah: Math.min(buyDepthXah, sellDepthXah)
+  };
+}
+function renderLiquidityMetrics(items){
+  if (!liqDepthRow) return;
+  liqDepthRow.innerHTML = "";
+  for (const m of items){
+    const card = el("div", "metric");
+    card.appendChild(el("div", "k", m.k));
+    card.appendChild(el("div", "v", m.v));
+    liqDepthRow.appendChild(card);
+  }
+}
+async function fetchLiquiditySnapshot(token){
+  const tokenCurrency = getTokenCurrency(token);
+  if (!token?.ws || !token?.issuer || !tokenCurrency){
+    throw new Error("missing token market params");
+  }
+
+  const ws = new WebSocket(token.ws);
+  await new Promise((resolve, reject) => {
+    ws.addEventListener("open", resolve, { once: true });
+    ws.addEventListener("error", () => reject(new Error("liquidity ws connect failed")), { once: true });
+  });
+
+  try{
+    const tokenAmount = { currency: tokenCurrency, issuer: token.issuer };
+    // Xahau book_offers expects native amount in object form (not drops string).
+    const xahAmount = { currency: "XAH" };
+
+    const [asksRes, bidsRes] = await Promise.all([
+      wsRequest(ws, {
+        command: "book_offers",
+        ledger_index: "validated",
+        taker_gets: tokenAmount,
+        taker_pays: xahAmount,
+        limit: 120
+      }),
+      wsRequest(ws, {
+        command: "book_offers",
+        ledger_index: "validated",
+        taker_gets: xahAmount,
+        taker_pays: tokenAmount,
+        limit: 120
+      })
+    ]);
+
+    const asks = calcDepthFromOffers(asksRes?.offers || [], "asks");
+    const bids = calcDepthFromOffers(bidsRes?.offers || [], "bids");
+
+    const bestAsk = asks.length ? Math.min(...asks.map((x) => x.price)) : NaN;
+    const bestBid = bids.length ? Math.max(...bids.map((x) => x.price)) : NaN;
+    const hasTwoSided = Number.isFinite(bestAsk) && Number.isFinite(bestBid) && bestAsk > 0 && bestBid > 0;
+    const mid = hasTwoSided ? (bestAsk + bestBid) / 2 : NaN;
+    const spreadBps = hasTwoSided && mid > 0 ? ((bestAsk - bestBid) / mid) * 10000 : NaN;
+
+    let buyDepthXah = 0;
+    let sellDepthXah = 0;
+    let depthBandPct = 2;
+    let tier1 = null;
+    let tier2 = null;
+    let tier5 = null;
+
+    if (Number.isFinite(mid) && mid > 0){
+      // Use executable depth from best prices to slippage thresholds.
+      tier1 = depthBySlippage(asks, bids, bestAsk, bestBid, 0.01);
+      tier2 = depthBySlippage(asks, bids, bestAsk, bestBid, 0.02);
+      tier5 = depthBySlippage(asks, bids, bestAsk, bestBid, 0.05);
+      buyDepthXah = tier2.buyDepthXah;
+      sellDepthXah = tier2.sellDepthXah;
+    }
+
+    const accessibleXah = hasTwoSided ? Math.min(buyDepthXah, sellDepthXah) : 0;
+    const score = buildLiquidityScore({ accessibleXah, spreadBps, hasTwoSided });
+    const imbalanceRatio = (hasTwoSided && buyDepthXah > 0) ? (sellDepthXah / buyDepthXah) : NaN;
+
+    return {
+      asksCount: asks.length,
+      bidsCount: bids.length,
+      bestAsk,
+      bestBid,
+      mid,
+      spreadBps,
+      buyDepthXah,
+      sellDepthXah,
+      depthBandPct,
+      tier1,
+      tier2,
+      tier5,
+      imbalanceRatio,
+      accessibleXah,
+      score,
+      hasTwoSided
+    };
+  } finally {
+    ws.close();
+  }
+}
+async function refreshLiquidityPanel(){
+  if (liquidityBusy) return;
+  liquidityBusy = true;
+  const reqNonce = ++liquidityReqNonce;
+  const token = activeToken;
+  if (!token){
+    resetLiquidityPanel("-");
+    setHeroUsdPrice("-");
+    liquidityBusy = false;
+    return;
+  }
+
+  setLiquidityLoading();
+  setHeroUsdPrice("loading...");
+  if (liqNote){
+    liqNote.textContent = "CLOB depth only (book_offers), measured from best bid/ask by slippage.";
+  }
+
+  try{
+    const snap = await fetchLiquiditySnapshot(token);
+    if (reqNonce !== liquidityReqNonce || token !== activeToken) return;
+
+    if (liqScoreEl) liqScoreEl.textContent = String(snap.score);
+    if (liqBar) liqBar.style.width = `${snap.score}%`;
+    if (liqMeta) liqMeta.textContent = `${snap.bidsCount} bids | ${snap.asksCount} asks`;
+
+    if (snap.hasTwoSided){
+      liqSpreadEl.textContent = `${snap.spreadBps.toFixed(1)} bps spread`;
+      renderLiquidityMetrics([
+        { k: "Accessible XAH (2% slip)", v: fmt(snap.accessibleXah) },
+        { k: "Book Imbalance (S/B)", v: Number.isFinite(snap.imbalanceRatio) ? `${snap.imbalanceRatio.toFixed(2)}x` : "-" },
+        { k: "Buy Depth (5% slip)", v: fmt(snap.tier5?.buyDepthXah || 0) },
+        { k: "Sell Depth (5% slip)", v: fmt(snap.tier5?.sellDepthXah || 0) }
+      ]);
+      if (liqNote){
+        liqNote.textContent = `CLOB depth only (book_offers). Depth tiers: 1% ${fmt(snap.tier1?.accessibleXah || 0)} XAH | 2% ${fmt(snap.tier2?.accessibleXah || 0)} XAH | 5% ${fmt(snap.tier5?.accessibleXah || 0)} XAH accessible.`;
+      }
+      try{
+        const xahUsd = await fetchXahUsdPrice();
+        if (reqNonce === liquidityReqNonce && token === activeToken){
+          setHeroUsdPrice(fmtUsd(snap.mid * xahUsd));
+        }
+      }catch{
+        if (reqNonce === liquidityReqNonce && token === activeToken){
+          setHeroUsdPrice("-");
+        }
+      }
+    } else {
+      liqSpreadEl.textContent = "one-sided or empty book";
+      renderLiquidityMetrics([
+        { k: "Accessible XAH (2% slip)", v: "0" },
+        { k: "Best Bid", v: Number.isFinite(snap.bestBid) ? `${fmtPrice(snap.bestBid)} XAH` : "-" },
+        { k: "Best Ask", v: Number.isFinite(snap.bestAsk) ? `${fmtPrice(snap.bestAsk)} XAH` : "-" },
+        { k: "Book State", v: "needs both sides" }
+      ]);
+      setHeroUsdPrice("-");
+    }
+  }catch{
+    if (reqNonce !== liquidityReqNonce || token !== activeToken) return;
+    resetLiquidityPanel("book depth unavailable");
+    if (liqMeta) liqMeta.textContent = "ws error";
+    setHeroUsdPrice("-");
+  } finally {
+    liquidityBusy = false;
+  }
 }
 let loadBarTimer = null;
 let loadBarProgress = 0;
@@ -522,7 +1046,7 @@ function renderTable(){
 
     const tdAddr = el("td");
     const addrWrap = el("div","addr");
-    const code = el("code", null, holder.address);
+    const code = el("code", null, displayAddr(holder.address));
     code.title = holder.address;
 
     const copyBtn = document.createElement("a");
@@ -606,8 +1130,6 @@ function computeStats(){
     topHolderPctEl.textContent = "-";
   }
 
-  lastUpdateEl.textContent = new Date().toLocaleString();
-
   // Whale dominance
   whaleRow.innerHTML = "";
   const ns = (activeToken.whaleTopN || [1,3,5,10]).filter(x => x > 0);
@@ -630,22 +1152,23 @@ function computeStats(){
   decentExplainEl.textContent = holders.length ? `Top3 ${top3.toFixed(1)}% | Top10 ${top10.toFixed(1)}%` : "-";
   decentBar.style.width = holders.length ? `${score}%` : "0%";
 
-  // Supply buckets
-  const buckets = [
-    { name: "10+ tokens", min: 10, max: Infinity },
-    { name: "5-9.99", min: 5, max: 9.999999 },
-    { name: "1-4.99", min: 1, max: 4.999999 },
-    { name: "0.1-0.99", min: 0.1, max: 0.999999 },
-    { name: "< 0.1", min: 0.000000001, max: 0.099999 },
-  ];
-
-  const totals = buckets.map(b => {
-    const sum = holders.reduce((acc, h) => (h.balance >= b.min && h.balance <= b.max) ? acc + h.balance : acc, 0);
-    return { ...b, sum };
-  });
-
+  // Supply breakdown
   const circulating = holders.reduce((acc, h) => acc + h.balance, 0);
   supplyMeta.textContent = holders.length ? `${fmt(circulating)} / ${fmt(activeToken.totalSupply)} circulating` : "-";
+
+  const whaleThreshold = activeToken.totalSupply * 0.01;    // >= 1% of total supply
+  const smallThreshold = activeToken.totalSupply * 0.001;   // < 0.1% of total supply
+
+  const whaleSum = holders.reduce((acc, h) => h.balance >= whaleThreshold ? acc + h.balance : acc, 0);
+  const smallSum = holders.reduce((acc, h) => h.balance < smallThreshold ? acc + h.balance : acc, 0);
+  const whaleCount = holders.filter((h) => h.balance >= whaleThreshold).length;
+  const smallCount = holders.filter((h) => h.balance < smallThreshold).length;
+
+  const totals = [
+    { name: "Circulating Supply", sum: circulating, extra: `${holders.length} holders` },
+    { name: "Large Whale Holders", sum: whaleSum, extra: `${whaleCount} wallets (>=1%)` },
+    { name: "Small Holders", sum: smallSum, extra: `${smallCount} wallets (<0.1%)` },
+  ];
 
   bucketList.innerHTML = "";
   for (const b of totals){
@@ -655,6 +1178,7 @@ function computeStats(){
     top.appendChild(el("div","bucketName", b.name));
     top.appendChild(el("div","bucketVal", `${fmt(b.sum)} (${pct.toFixed(1)}%)`));
     card.appendChild(top);
+    card.appendChild(el("div","miniNote", b.extra || ""));
 
     const barWrap = el("div","bucketBarWrap");
     const bar = el("div","bucketBar");
@@ -793,6 +1317,7 @@ async function loadHolders({ forceNetwork = false } = {}){
     if (cacheFresh){
       setStatus(true, `cached (${ageSec}s old)`);
       setRichListLoading(false);
+      refreshLiquidityPanel();
       return;
     }
     setStatus(true, `cached (${ageSec}s old), refreshing...`);
@@ -833,6 +1358,7 @@ async function loadHolders({ forceNetwork = false } = {}){
     renderTable();
     computeStats();
     setRichListLoading(false);
+    refreshLiquidityPanel();
   }
 }
 
@@ -1128,7 +1654,13 @@ function applyTokenToUI(){
       getBadgeRules(activeToken).filter((r) => r.panel !== false)
     )
       .map((r) => `${r.icon || ""} ${r.title || "Badge"}`.trim());
-    cardHint.innerHTML = `<b>Badges:</b> ${hintItems.join(", ")}.`;
+    if (hintItems.length){
+      cardHint.innerHTML = `<b>Badges:</b> ${hintItems.join(", ")}.`;
+      cardHint.style.display = "";
+    } else {
+      cardHint.innerHTML = "";
+      cardHint.style.display = "none";
+    }
   }
 
   statSupply.textContent = String(activeToken.totalSupply);
@@ -1156,6 +1688,10 @@ function applyTokenToUI(){
   }
 
   setPills();
+  resetLiquidityPanel("loading book depth...");
+  setHeroUsdPrice("loading...");
+  setDexChartPairLabel(activeToken);
+  loadDexChartHistory();
 }
 
 /* ===== Token selector ===== */
@@ -1178,11 +1714,14 @@ function initTokenSelector(){
     applyTokenToUI();
     await loadHolders();
     startFeed();
+    refreshLiquidityPanel();
+    startLiquidityPolling();
   });
 }
 
 /* ===== UI events ===== */
 searchEl.addEventListener("input", () => renderTable());
+window.addEventListener("resize", () => renderTable());
 
 chips.forEach(chip => {
   chip.addEventListener("click", () => {
@@ -1209,6 +1748,41 @@ if (loadAllBtn){
   });
 }
 feedReconnect.addEventListener("click", () => startFeed());
+if (dexRange7d){
+  dexRange7d.addEventListener("click", () => {
+    if (dexChartRangeDays === 7) return;
+    dexChartRangeDays = 7;
+    loadDexChartHistory();
+  });
+}
+if (dexRange30d){
+  dexRange30d.addEventListener("click", () => {
+    if (dexChartRangeDays === 30) return;
+    dexChartRangeDays = 30;
+    loadDexChartHistory();
+  });
+}
+if (dexRange3m){
+  dexRange3m.addEventListener("click", () => {
+    if (dexChartRangeDays === 90) return;
+    dexChartRangeDays = 90;
+    loadDexChartHistory();
+  });
+}
+if (dexRange6m){
+  dexRange6m.addEventListener("click", () => {
+    if (dexChartRangeDays === 180) return;
+    dexChartRangeDays = 180;
+    loadDexChartHistory();
+  });
+}
+if (dexRange1y){
+  dexRange1y.addEventListener("click", () => {
+    if (dexChartRangeDays === 365) return;
+    dexChartRangeDays = 365;
+    loadDexChartHistory();
+  });
+}
 
 /* ===== Boot ===== */
 (function boot(){
@@ -1223,5 +1797,7 @@ feedReconnect.addEventListener("click", () => startFeed());
   applyTokenToUI();
   loadHolders();
   startFeed();
+  refreshLiquidityPanel();
+  startLiquidityPolling();
 })();
 
