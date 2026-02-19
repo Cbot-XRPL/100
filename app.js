@@ -1084,7 +1084,6 @@ function setPills(){
   pillRow.innerHTML = "";
   const pills = [
     { k:"Network", v: "Xahau" },
-    { k:"Genesis gate", v: "Hold = 1" },
     { k:"Supply", v: String(activeToken.totalSupply) },
     { k:"Social", v: "Twitter", href: activeToken.xUrl || "#" }
   ];

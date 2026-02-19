@@ -50,7 +50,7 @@
     explorerUrl: "https://xahauexplorer.com/en/token/rEvernodee8dJLaFsujS6q1EiXvZYmHXr8/EVR",
     xUrl: "https://x.com/EvernodeXRPL",
     whitepaper: "EVR is Evernode's utility token on Xahau, used in host economics and service coordination. Holder concentration and activity metrics are shown here for transparency.",
-    whitepaperHtml: "",
+    whitepaperHtml: "https://raw.githubusercontent.com/EvernodeXRPL/whitepaper/main/Evernode%202.0.pdf",
     description:
       "Evernode's native token on Xahau, used for hosting, registration, and dApp service payments.",
     badgeRules: [
@@ -100,4 +100,3 @@
     whaleTopN: [1, 3, 5, 10],
   },
 ];
-
