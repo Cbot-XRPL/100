@@ -182,6 +182,9 @@ const DEFAULT_BADGE_RULES = [
   { id: "exact1", title: "Exact One", icon: "\u{1F3AF}", className: "club", type: "exact", value: 1, epsilon: 1e-9, rule: "Hold exactly 1.0000" },
 ];
 function getBadgeRules(token){
+  if (token?.id !== "100"){
+    return [];
+  }
   const list = Array.isArray(token?.badgeRules) && token.badgeRules.length
     ? token.badgeRules
     : DEFAULT_BADGE_RULES;

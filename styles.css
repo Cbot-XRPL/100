@@ -197,6 +197,19 @@ select option{
   background:rgba(255,255,255,.07);
   box-shadow:0 12px 35px rgba(0,0,0,.35);
 }
+/* Keep header Explorer + Rich List buttons visually static on hover */
+#btnExplorer:hover{
+  transform:none;
+  border-color:rgba(255,45,45,.35);
+  background:radial-gradient(circle at 20% 20%, rgba(255,45,45,.22), rgba(255,255,255,.05));
+  box-shadow:none;
+}
+.links a[href="#richlist"]:hover{
+  transform:none;
+  border-color:var(--line);
+  background:rgba(255,255,255,.05);
+  box-shadow:none;
+}
 .btn.primary{
   border-color:rgba(255,45,45,.35);
   background:radial-gradient(circle at 20% 20%, rgba(255,45,45,.22), rgba(255,255,255,.05));
