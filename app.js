@@ -46,11 +46,13 @@ const searchEl = document.getElementById("search");
 const dataStatusEl = document.getElementById("dataStatus");
 const statPriceUsdEl = document.getElementById("statPriceUsd");
 const onePercentCountEl = document.getElementById("onePercentCount");
+const statClubLabelEl = document.getElementById("statClubLabel");
 const topHolderPctEl = document.getElementById("topHolderPct");
 const refreshBtn = document.getElementById("refreshBtn");
 const clearCacheBtn = document.getElementById("clearCacheBtn");
 const loadAllBtn = document.getElementById("loadAllBtn");
 const xahLoadRichlistBtn = document.getElementById("xahLoadRichlistBtn");
+const xahStatsUpdateBtn = document.getElementById("xahStatsUpdateBtn");
 const chips = Array.from(document.querySelectorAll(".chip[data-filter]"));
 
 const whaleRow = document.getElementById("whaleRow");
@@ -149,6 +151,13 @@ let dexChartReqNonce = 0;
 const loadedRichlistTokenIds = new Set();
 let richlistObserver = null;
 let renderedHoldersTokenId = null;
+let xahApproxStatsMode = false;
+let xahSupplySnapshot = { circulating: NaN, fullSupply: NaN, accounts: NaN, ts: 0 };
+const XAH_FALLBACK_SNAPSHOT = {
+  circulating: 489293309.31,
+  fullSupply: 644606185.90,
+  accounts: 201406
+};
 
 function getTableRenderLimit(){
   const n = Number(activeToken?.renderLimit);
@@ -230,11 +239,15 @@ function buildXahApproxHolders({ circulating, accounts, topHolders = [] }){
     : 12000;
   const targetCount = Math.max(sanitizedTop.length + 4000, Math.min(30000, holderEstimate));
   const topSum = sanitizedTop.reduce((acc, h) => acc + h.balance, 0);
-  const tailSupply = Math.max(0, circ - topSum);
-  const tailCount = Math.max(0, targetCount - sanitizedTop.length);
-  if (!tailCount || tailSupply <= 0) return sanitizedTop;
+  const normalizedTop = topSum > circ
+    ? sanitizedTop.map((h) => ({ ...h, balance: (h.balance / topSum) * circ }))
+    : sanitizedTop;
+  const normalizedTopSum = normalizedTop.reduce((acc, h) => acc + h.balance, 0);
+  const tailSupply = Math.max(0, circ - normalizedTopSum);
+  const tailCount = Math.max(0, targetCount - normalizedTop.length);
+  if (!tailCount || tailSupply <= 0) return normalizedTop;
 
-  const out = [...sanitizedTop];
+  const out = [...normalizedTop];
   let weightSum = 0;
   for (let i = 0; i < tailCount; i++){
     weightSum += 1 / Math.pow(i + 16, 1.07);
@@ -1310,6 +1323,11 @@ function filterHolders(list, q, filter){
   return out;
 }
 function renderTable(){
+  if (isNativeXahToken(activeToken) && renderedHoldersTokenId !== activeToken?.id){
+    setRichlistIdleMessage("XAH rich list is on-demand. Click Load XAH Rich List to fetch wallet balances.");
+    return;
+  }
+
   const q = searchEl.value || "";
   const tableRenderLimit = getTableRenderLimit();
   const filteredList = filterHolders(allHolders, q, activeFilter);
@@ -1426,6 +1444,14 @@ function computeStats(){
     whaleRow.appendChild(m);
   }
   whaleMeta.textContent = holders.length ? `${holders.length} holders` : "-";
+  if (isNativeXahToken(activeToken) && xahApproxStatsMode){
+    if (Number.isFinite(xahSupplySnapshot.accounts) && onePercentCountEl){
+      onePercentCountEl.textContent = String(Math.floor(xahSupplySnapshot.accounts));
+    }
+    if (Number.isFinite(xahSupplySnapshot.accounts)) {
+      whaleMeta.textContent = `${Math.floor(xahSupplySnapshot.accounts)} wallets (api est)`;
+    }
+  }
 
   // Decentralization score (simple Onyx metric)
   const top3 = holders.length ? computeTopN(holders, 3) : 0;
@@ -1438,7 +1464,10 @@ function computeStats(){
   decentBar.style.width = holders.length ? `${score}%` : "0%";
 
   // Supply breakdown
-  const circulating = holders.reduce((acc, h) => acc + h.balance, 0);
+  const circulatingRaw = holders.reduce((acc, h) => acc + h.balance, 0);
+  const circulating = (isNativeXahToken(activeToken) && Number.isFinite(xahSupplySnapshot.circulating) && xahSupplySnapshot.circulating > 0)
+    ? xahSupplySnapshot.circulating
+    : circulatingRaw;
   supplyMeta.textContent = holders.length ? `${fmt(circulating)} / ${fmt(activeToken.totalSupply)} circulating` : "-";
 
   const whaleThreshold = activeToken.totalSupply * 0.01;    // >= 1% of total supply
@@ -1637,6 +1666,7 @@ async function fetchNativeXahHoldersFromWS({ wsUrl, excludedAddresses, limitPerP
 /* ===== Load holders ===== */
 async function loadHolders({ forceNetwork = false } = {}){
   if (isNativeXahToken(activeToken)){
+    xahApproxStatsMode = false;
     const ttlMs = getRichlistCacheTtlMs(activeToken);
     const cached = forceNetwork ? null : readRichlistCache(activeToken);
     const now = Date.now();
@@ -2081,32 +2111,62 @@ function setRichlistIdleMessage(msg){
   }
 }
 
-async function primeXahSupplyFromApi(){
+async function primeXahSupplyFromApi({ refreshApprox = true } = {}){
   if (!isNativeXahToken(activeToken)) return;
+
+  let info = null;
   try{
-    const info = await fetchXahSupplyInfo();
-    if (!isNativeXahToken(activeToken)) return;
-
-    const circulating = Number.isFinite(info.circulating) && info.circulating > 0 ? info.circulating : NaN;
-    const fullSupply = Number.isFinite(info.fullSupply) && info.fullSupply > 0 ? info.fullSupply : NaN;
-
-    if (Number.isFinite(circulating) && Number.isFinite(fullSupply)){
-      activeToken.totalSupply = fullSupply;
-      statSupply.textContent = fmt(fullSupply);
-      if (supplyMeta) supplyMeta.textContent = `${fmt(circulating)} / ${fmt(fullSupply)} circulating`;
-    } else if (Number.isFinite(circulating)){
-      activeToken.totalSupply = circulating;
-      statSupply.textContent = fmt(circulating);
-      if (supplyMeta) supplyMeta.textContent = `${fmt(circulating)} circulating`;
-    }
-
-    if (Number.isFinite(info.accounts) && onePercentCountEl){
-      onePercentCountEl.textContent = String(Math.floor(info.accounts));
-    }
-    setPills();
+    info = await fetchXahSupplyInfo();
   }catch{
-    // keep existing token-config fallback
+    info = null;
   }
+  if (!isNativeXahToken(activeToken)) return;
+
+  const circulating = Number.isFinite(Number(info?.circulating)) && Number(info.circulating) > 0
+    ? Number(info.circulating)
+    : (Number.isFinite(xahSupplySnapshot.circulating) && xahSupplySnapshot.circulating > 0
+      ? xahSupplySnapshot.circulating
+      : XAH_FALLBACK_SNAPSHOT.circulating);
+
+  const fullSupply = Number.isFinite(Number(info?.fullSupply)) && Number(info.fullSupply) > 0
+    ? Number(info.fullSupply)
+    : (Number.isFinite(xahSupplySnapshot.fullSupply) && xahSupplySnapshot.fullSupply > 0
+      ? xahSupplySnapshot.fullSupply
+      : XAH_FALLBACK_SNAPSHOT.fullSupply);
+
+  const accounts = Number.isFinite(Number(info?.accounts)) && Number(info.accounts) > 0
+    ? Math.floor(Number(info.accounts))
+    : (Number.isFinite(xahSupplySnapshot.accounts) && xahSupplySnapshot.accounts > 0
+      ? Math.floor(xahSupplySnapshot.accounts)
+      : XAH_FALLBACK_SNAPSHOT.accounts);
+
+  xahSupplySnapshot = { circulating, fullSupply, accounts, ts: Date.now() };
+
+  activeToken.totalSupply = fullSupply;
+  statSupply.textContent = fmt(fullSupply);
+  if (supplyMeta) supplyMeta.textContent = `${fmt(circulating)} / ${fmt(fullSupply)} circulating`;
+  if (Number.isFinite(accounts) && onePercentCountEl){
+    onePercentCountEl.textContent = String(accounts);
+  }
+
+  if (refreshApprox){
+    const tpl = readXahTemplateCache();
+    const approx = buildXahApproxHolders({
+      circulating,
+      accounts,
+      topHolders: Array.isArray(tpl?.topHolders) ? tpl.topHolders : []
+    });
+
+    if (approx.length){
+      allHolders = normalizeHolders(approx);
+      if (allHolders.length) allHolders[allHolders.length - 1].isLast = true;
+      xahApproxStatsMode = true;
+      computeStats();
+      setStatus(true, info ? `approx stats loaded (${allHolders.length} model wallets)` : `fallback approx loaded (${allHolders.length} model wallets)`);
+    }
+  }
+
+  setPills();
 }
 
 async function ensureRichlistLoadedForActiveToken({ forceNetwork = false, reason = "manual" } = {}){
@@ -2116,8 +2176,9 @@ async function ensureRichlistLoadedForActiveToken({ forceNetwork = false, reason
   if (!forceNetwork && loadedRichlistTokenIds.has(tokenId) && renderedHoldersTokenId === tokenId) return;
 
   loadedRichlistTokenIds.add(tokenId);
-  await loadHolders({ forceNetwork });
   renderedHoldersTokenId = tokenId;
+  xahApproxStatsMode = false;
+  await loadHolders({ forceNetwork });
 
   // For XAH keep it on-demand unless user explicitly opened richlist.
   if (isNativeXahToken(activeToken) && reason === "boot"){
@@ -2126,10 +2187,20 @@ async function ensureRichlistLoadedForActiveToken({ forceNetwork = false, reason
 }
 
 function wireRichlistLazyLoad(){
-  if (!xahLoadRichlistBtn) return;
-  xahLoadRichlistBtn.addEventListener("click", async () => {
-    await ensureRichlistLoadedForActiveToken({ reason: "xah-load-click" });
-  });
+  if (xahLoadRichlistBtn){
+    xahLoadRichlistBtn.addEventListener("click", async () => {
+      await ensureRichlistLoadedForActiveToken({ reason: "xah-load-click" });
+    });
+  }
+  if (xahStatsUpdateBtn){
+    xahStatsUpdateBtn.addEventListener("click", async () => {
+      if (!isNativeXahToken(activeToken)) return;
+      setStatus(true, "updating XAH stats...");
+      await primeXahSupplyFromApi({ refreshApprox: true });
+      refreshLiquidityPanel();
+      loadDexChartHistory();
+    });
+  }
 }
 function applyTokenToUI(){
   if (!activeToken) return;
@@ -2165,6 +2236,9 @@ function applyTokenToUI(){
   }
 
   statSupply.textContent = String(activeToken.totalSupply);
+  if (statClubLabelEl){
+    statClubLabelEl.textContent = isNativeXahToken(activeToken) ? "Wallet Count" : "1% Club";
+  }
 
   btnExplorer.href = activeToken.explorerUrl || "#";
   btnTokenDetails.href = activeToken.explorerUrl || "#";
@@ -2187,6 +2261,9 @@ function applyTokenToUI(){
     xahLoadRichlistBtn.disabled = false;
     xahLoadRichlistBtn.textContent = "Load XAH Rich List";
   }
+  if (xahStatsUpdateBtn){
+    xahStatsUpdateBtn.style.display = nativeXah ? "inline-flex" : "none";
+  }
 
   if (nativeXah){
     setStatus(true, "rich list idle (click Load XAH Rich List)");
@@ -2194,7 +2271,7 @@ function applyTokenToUI(){
     allHolders = [];
     renderedHoldersTokenId = null;
     setRichlistIdleMessage("XAH rich list is on-demand. Click Load XAH Rich List to fetch wallet balances.");
-    primeXahSupplyFromApi();
+    primeXahSupplyFromApi({ refreshApprox: true });
   }
 
   if (whitepaperSummary){
