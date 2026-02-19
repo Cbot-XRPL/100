@@ -151,6 +151,7 @@ let dexChartReqNonce = 0;
 const loadedRichlistTokenIds = new Set();
 let richlistObserver = null;
 let renderedHoldersTokenId = null;
+let richListLoadNonce = 0;
 let xahApproxStatsMode = false;
 let xahSupplySnapshot = { circulating: NaN, fullSupply: NaN, accounts: NaN, ts: 0 };
 const XAH_FALLBACK_SNAPSHOT = {
@@ -472,7 +473,7 @@ function setTokenLogo(elm, token, fallbackText){
 function shortAddr(a){
   if (!a) return "";
   if (a.length <= 14) return a;
-  return a.slice(0, 6) + "…" + a.slice(-6);
+  return a.slice(0, 6) + "â€¦" + a.slice(-6);
 }
 function displayAddr(a){
   if (!a) return "";
@@ -515,10 +516,10 @@ function setHeroUsdPrice(valueText){
 }
 function renderLiquiditySkeleton(label){
   renderLiquidityMetrics([
-    { k: "Accessible XAH (2% slip)", v: label || "0" },
+    { k: "Accessible USD (2% slip)", v: label || "$0" },
     { k: "Book Imbalance (S/B)", v: label || "0" },
-    { k: "Buy Depth (5% slip)", v: label || "0" },
-    { k: "Sell Depth (5% slip)", v: label || "0" }
+    { k: "Buy Depth (5% slip)", v: label || "$0" },
+    { k: "Sell Depth (5% slip)", v: label || "$0" }
   ]);
 }
 function setLiquidityLoading(msg){
@@ -1154,33 +1155,37 @@ async function refreshLiquidityPanel(){
     if (liqBar) liqBar.style.width = `${snap.score}%`;
     if (liqMeta) liqMeta.textContent = `${snap.bidsCount} bids | ${snap.asksCount} asks`;
 
+    let xahUsd = NaN;
+    try{
+      xahUsd = await fetchXahUsdPrice();
+    }catch{
+      xahUsd = Number.isFinite(xahUsdCache.px) ? xahUsdCache.px : NaN;
+    }
+    const toUsd = (xahAmt) => {
+      const n = Number(xahAmt);
+      return (Number.isFinite(n) && Number.isFinite(xahUsd) && xahUsd > 0) ? fmtUsd(n * xahUsd) : "-";
+    };
+
     if (snap.hasTwoSided){
       liqSpreadEl.textContent = `${snap.spreadBps.toFixed(1)} bps spread`;
       renderLiquidityMetrics([
-        { k: "Accessible XAH (2% slip)", v: fmt(snap.accessibleXah) },
+        { k: "Accessible USD (2% slip)", v: toUsd(snap.accessibleXah) },
         { k: "Book Imbalance (S/B)", v: Number.isFinite(snap.imbalanceRatio) ? `${snap.imbalanceRatio.toFixed(2)}x` : "-" },
-        { k: "Buy Depth (5% slip)", v: fmt(snap.tier5?.buyDepthXah || 0) },
-        { k: "Sell Depth (5% slip)", v: fmt(snap.tier5?.sellDepthXah || 0) }
+        { k: "Buy Depth (5% slip)", v: toUsd(snap.tier5?.buyDepthXah || 0) },
+        { k: "Sell Depth (5% slip)", v: toUsd(snap.tier5?.sellDepthXah || 0) }
       ]);
       if (liqNote){
-        liqNote.textContent = `CLOB depth only (book_offers). Depth tiers: 1% ${fmt(snap.tier1?.accessibleXah || 0)} XAH | 2% ${fmt(snap.tier2?.accessibleXah || 0)} XAH | 5% ${fmt(snap.tier5?.accessibleXah || 0)} XAH accessible.`;
+        liqNote.textContent = `CLOB depth only (book_offers). Depth tiers: 1% ${toUsd(snap.tier1?.accessibleXah || 0)} | 2% ${toUsd(snap.tier2?.accessibleXah || 0)} | 5% ${toUsd(snap.tier5?.accessibleXah || 0)} accessible.`;
       }
-      try{
-        const xahUsd = await fetchXahUsdPrice();
-        if (reqNonce === liquidityReqNonce && token === activeToken){
-          setHeroUsdPrice(fmtUsd(snap.mid * xahUsd));
-        }
-      }catch{
-        if (reqNonce === liquidityReqNonce && token === activeToken){
-          setHeroUsdPrice("-");
-        }
+      if (reqNonce === liquidityReqNonce && token === activeToken){
+        setHeroUsdPrice(Number.isFinite(xahUsd) && xahUsd > 0 ? fmtUsd(snap.mid * xahUsd) : "-");
       }
     } else {
       liqSpreadEl.textContent = "one-sided or empty book";
       renderLiquidityMetrics([
-        { k: "Accessible XAH (2% slip)", v: "0" },
-        { k: "Best Bid", v: Number.isFinite(snap.bestBid) ? `${fmtPrice(snap.bestBid)} XAH` : "-" },
-        { k: "Best Ask", v: Number.isFinite(snap.bestAsk) ? `${fmtPrice(snap.bestAsk)} XAH` : "-" },
+        { k: "Accessible USD (2% slip)", v: "$0" },
+        { k: "Best Bid", v: Number.isFinite(snap.bestBid) ? toUsd(snap.bestBid) : "-" },
+        { k: "Best Ask", v: Number.isFinite(snap.bestAsk) ? toUsd(snap.bestAsk) : "-" },
         { k: "Book State", v: "needs both sides" }
       ]);
       setHeroUsdPrice("-");
@@ -1231,6 +1236,10 @@ function startLoadBarTimer(){
   }, 120);
 }
 
+function cancelRichListLoadUI(){
+  richListLoadNonce += 1;
+  setRichListLoading(false);
+}
 function setRichListLoading(isLoading){
   if (xahLoadRichlistBtn && isNativeXahToken(activeToken)){
     xahLoadRichlistBtn.disabled = Boolean(isLoading);
@@ -1665,10 +1674,21 @@ async function fetchNativeXahHoldersFromWS({ wsUrl, excludedAddresses, limitPerP
 }
 /* ===== Load holders ===== */
 async function loadHolders({ forceNetwork = false } = {}){
-  if (isNativeXahToken(activeToken)){
+  const tokenAtRequest = activeToken;
+  const reqNonce = ++richListLoadNonce;
+  const isStale = () => reqNonce !== richListLoadNonce || tokenAtRequest !== activeToken;
+  const finishIfFresh = () => {
+    if (isStale()) return;
+    renderTable();
+    computeStats();
+    setRichListLoading(false);
+    refreshLiquidityPanel();
+  };
+
+  if (isNativeXahToken(tokenAtRequest)){
     xahApproxStatsMode = false;
-    const ttlMs = getRichlistCacheTtlMs(activeToken);
-    const cached = forceNetwork ? null : readRichlistCache(activeToken);
+    const ttlMs = getRichlistCacheTtlMs(tokenAtRequest);
+    const cached = forceNetwork ? null : readRichlistCache(tokenAtRequest);
     const now = Date.now();
     const hasCached = Boolean(cached?.holders?.length);
     const cachedAgeMs = cached ? Math.max(0, now - cached.ts) : 0;
@@ -1682,8 +1702,7 @@ async function loadHolders({ forceNetwork = false } = {}){
       const ageSec = Math.floor(cachedAgeMs / 1000);
       if (cacheFresh){
         setStatus(true, `cached (${ageSec}s old)`);
-        setRichListLoading(false);
-        refreshLiquidityPanel();
+        finishIfFresh();
         return;
       }
       setStatus(true, `cached (${ageSec}s old), refreshing...`);
@@ -1695,16 +1714,18 @@ async function loadHolders({ forceNetwork = false } = {}){
     setRichListLoading(true);
 
     try{
-      const excludedAddresses = getExcludedAddressSet(activeToken);
+      const excludedAddresses = getExcludedAddressSet(tokenAtRequest);
       const info = await fetchXahSupplyInfo();
+      if (isStale()) return;
+
       const circulating = Number.isFinite(info.circulating) && info.circulating > 0 ? info.circulating : NaN;
       const fullSupply = Number.isFinite(info.fullSupply) && info.fullSupply > 0 ? info.fullSupply : NaN;
       if (Number.isFinite(circulating) && Number.isFinite(fullSupply)){
-        activeToken.totalSupply = fullSupply;
+        tokenAtRequest.totalSupply = fullSupply;
         statSupply.textContent = fmt(fullSupply);
         if (supplyMeta) supplyMeta.textContent = `${fmt(circulating)} / ${fmt(fullSupply)} circulating`;
       } else if (Number.isFinite(circulating)){
-        activeToken.totalSupply = circulating;
+        tokenAtRequest.totalSupply = circulating;
         statSupply.textContent = fmt(circulating);
       }
       if (Number.isFinite(info.accounts) && onePercentCountEl){
@@ -1732,23 +1753,26 @@ async function loadHolders({ forceNetwork = false } = {}){
       }
 
       const holders = await fetchNativeXahHoldersFromWS({
-        wsUrl: activeToken.ws,
+        wsUrl: tokenAtRequest.ws,
         excludedAddresses,
         limitPerPage: 400,
         onProgress: ({ page, count, hasMore }) => {
+          if (isStale()) return;
           const pageBasedPct = 14 + (1 - Math.exp(-page * 0.065)) * 82;
           setLoadBarTarget(hasMore ? pageBasedPct : 96);
           setStatus(true, `scanning wallets: ${page} pages | ${count} accounts`);
         },
       });
 
-      writeRichlistCache(activeToken, holders);
+      if (isStale()) return;
+      writeRichlistCache(tokenAtRequest, holders);
       writeXahTemplateCache(buildXahTemplateFromLive(holders, info));
       allHolders = normalizeHolders(holders);
       if (allHolders.length) allHolders[allHolders.length - 1].isLast = true;
 
       setStatus(true, `live wallets (${holders.length})`);
     }catch{
+      if (isStale()) return;
       if (!hasCached){
         allHolders = normalizeHolders([]);
         setStatus(false, "native wallet scan failed");
@@ -1756,16 +1780,13 @@ async function loadHolders({ forceNetwork = false } = {}){
         setStatus(false, "refresh failed, showing cached");
       }
     } finally {
-      renderTable();
-      computeStats();
-      setRichListLoading(false);
-      refreshLiquidityPanel();
+      finishIfFresh();
     }
     return;
   }
 
-  const ttlMs = getRichlistCacheTtlMs(activeToken);
-  const cached = forceNetwork ? null : readRichlistCache(activeToken);
+  const ttlMs = getRichlistCacheTtlMs(tokenAtRequest);
+  const cached = forceNetwork ? null : readRichlistCache(tokenAtRequest);
   const now = Date.now();
   const hasCached = Boolean(cached?.holders?.length);
   const cachedAgeMs = cached ? Math.max(0, now - cached.ts) : 0;
@@ -1779,8 +1800,7 @@ async function loadHolders({ forceNetwork = false } = {}){
     const ageSec = Math.floor(cachedAgeMs / 1000);
     if (cacheFresh){
       setStatus(true, `cached (${ageSec}s old)`);
-      setRichListLoading(false);
-      refreshLiquidityPanel();
+      finishIfFresh();
       return;
     }
     setStatus(true, `cached (${ageSec}s old), refreshing...`);
@@ -1792,25 +1812,28 @@ async function loadHolders({ forceNetwork = false } = {}){
   setRichListLoading(true);
 
   try{
-    const excludedAddresses = getExcludedAddressSet(activeToken);
+    const excludedAddresses = getExcludedAddressSet(tokenAtRequest);
     const holders = await fetchHoldersFromWS({
-      wsUrl: activeToken.ws,
-      issuer: activeToken.issuer,
-      currency: getTokenCurrency(activeToken),
+      wsUrl: tokenAtRequest.ws,
+      issuer: tokenAtRequest.issuer,
+      currency: getTokenCurrency(tokenAtRequest),
       excludedAddresses,
       limitPerPage: 400,
       onProgress: ({ page, hasMore }) => {
+        if (isStale()) return;
         const pageBasedPct = 18 + (1 - Math.exp(-page * 0.38)) * 70;
         setLoadBarTarget(hasMore ? pageBasedPct : 96);
       },
     });
 
-    writeRichlistCache(activeToken, holders);
+    if (isStale()) return;
+    writeRichlistCache(tokenAtRequest, holders);
     allHolders = normalizeHolders(holders);
     if (allHolders.length) allHolders[allHolders.length - 1].isLast = true;
 
     setStatus(true, "live data (ledger)");
   }catch{
+    if (isStale()) return;
     if (!hasCached){
       allHolders = normalizeHolders([]);
       setStatus(false, "failed (ws)");
@@ -1818,13 +1841,9 @@ async function loadHolders({ forceNetwork = false } = {}){
       setStatus(false, "refresh failed, showing cached");
     }
   } finally {
-    renderTable();
-    computeStats();
-    setRichListLoading(false);
-    refreshLiquidityPanel();
+    finishIfFresh();
   }
 }
-
 /* ===== BUY/SELL + Price feed via meta deltas ===== */
 function getMeta(msg){ return msg?.meta || msg?.metaData || msg?.result?.meta || null; }
 function getTx(msg){ return msg?.transaction || msg?.tx || msg?.result?.transaction || msg; }
@@ -2205,7 +2224,7 @@ function wireRichlistLazyLoad(){
 function applyTokenToUI(){
   if (!activeToken) return;
 
-  document.title = `Onyx Hub — ${activeToken?.symbol || activeToken?.name || "100"}`;
+  document.title = `Onyx Hub â€” ${activeToken?.symbol || activeToken?.name || "100"}`;
   setTokenLogo(brandEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
   setTokenLogo(heroEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
   setTokenLogo(statEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
@@ -2307,6 +2326,7 @@ function initTokenSelector(){
   tokenSelect.addEventListener("change", async () => {
     const id = tokenSelect.value;
     const next = TOKENS.find(t => t.id === id) || TOKENS[0];
+    cancelRichListLoadUI();
     activeToken = next;
     showAllRows = false;
 
@@ -2405,4 +2425,3 @@ if (dexRange1y){
   refreshLiquidityPanel();
   startLiquidityPolling();
 })();
-

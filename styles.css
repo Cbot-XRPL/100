@@ -1,4 +1,4 @@
-﻿:root{
+:root{
   --bg:#07070a;
   --text:rgba(255,255,255,0.92);
   --muted:rgba(255,255,255,0.65);
@@ -853,6 +853,89 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
   }
   .metricRow{
     grid-template-columns:1fr;
+  }
+}
+
+
+/* Mobile polish for post-XAH controls */
+@media (max-width: 768px){
+  .panelHead{
+    align-items:center;
+    text-align:center;
+  }
+  .panelHead h2{
+    width:100%;
+    text-align:center;
+  }
+  .panelHead .meta{
+    width:100%;
+    justify-content:center;
+    text-align:center;
+    gap:8px;
+  }
+  .controls{
+    align-items:center;
+  }
+  .search{
+    width:100%;
+  }
+  .toggleRow{
+    width:100%;
+    justify-content:center;
+  }
+  .toggleRow .chip,
+  .toggleRow button.chip{
+    text-align:center;
+  }
+  #xahLoadRichlistBtn,
+  #xahStatsUpdateBtn{
+    min-height:34px;
+  }
+  .chartRow{
+    grid-template-columns:1fr;
+    gap:8px;
+  }
+  .chartAxis{
+    width:100%;
+    height:auto;
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:6px;
+  }
+  .chartAxisTick{
+    position:static;
+    transform:none;
+    text-align:center;
+    font-size:11px;
+  }
+  .metricRow{
+    justify-items:center;
+  }
+  .metric{
+    width:100%;
+    text-align:center;
+  }
+  .bigScore{
+    justify-content:center;
+  }
+  .scoreSub{
+    text-align:center;
+  }
+  .bucketTop{
+    align-items:center;
+  }
+  .bucketName,
+  .bucketVal,
+  .miniNote{
+    text-align:center;
+  }
+  .feedControls{
+    justify-content:center;
+    text-align:center;
+  }
+  .foot{
+    justify-content:center;
+    text-align:center;
   }
 }
 
