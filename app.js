@@ -2550,7 +2550,6 @@ function setPills(){
   pillRow.innerHTML = "";
   const pills = [
     { k:"Network", v: "Xahau" },
-    { k:"Supply", v: String(activeToken.totalSupply) },
     { k:"Social", v: "Twitter", href: activeToken.xUrl || "#" }
   ];
   for (const p of pills){
@@ -2684,7 +2683,7 @@ function applyTokenToUI(){
   if (!activeToken) return;
   setEmojiFieldForToken(activeToken);
 
-  document.title = `Onyx Hub — ${activeToken?.symbol || activeToken?.name || "100"}`;
+  document.title = `One Xahau — ${activeToken?.symbol || activeToken?.name || "100"}`;
   setBrandLogo();
   setTokenLogo(heroEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
   setTokenLogo(statEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
