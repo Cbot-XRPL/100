@@ -22,7 +22,7 @@ window.ONYX_TOKENS = [
     logo: "XAH",
     theme: "xahau",
     liquidityProfile: "commercial", // options: commercial | alt
-    liquidityScoreScale: "A", // options: A (balanced) | B (depth-first)
+    liquidityScoreScale: "D", // options: D (baseline) | B (depth-first)
     liquidityDepthTargetUsd: 10000,
     ws: "wss://xahau.network",
     explorerUrl: "https://xahauexplorer.com",
@@ -53,7 +53,7 @@ window.ONYX_TOKENS = [
     logo: "100",
     theme: "genesis",
     liquidityProfile: "alt",
-    liquidityScoreScale: "A",
+    liquidityScoreScale: "D",
     liquidityDepthTargetUsd: 500,
     ws: "wss://xahau.network",
     explorerUrl: "https://xahauexplorer.com/en/token/roneGNc3hdSwWZEr54RZceQr8Fftq6fkL/ONE",
@@ -88,7 +88,7 @@ window.ONYX_TOKENS = [
     logo: "EVR",
     theme: "evernode",
     liquidityProfile: "alt",
-    liquidityScoreScale: "A",
+    liquidityScoreScale: "D",
     liquidityDepthTargetUsd: 500,
     ws: "wss://xahau.network",
     explorerUrl: "https://xahauexplorer.com/en/token/rEvernodee8dJLaFsujS6q1EiXvZYmHXr8/EVR",
@@ -124,7 +124,7 @@ window.ONYX_TOKENS = [
     logo: "XM",
     theme: "xmerch",
     liquidityProfile: "alt",
-    liquidityScoreScale: "A",
+    liquidityScoreScale: "D",
     liquidityDepthTargetUsd: 500,
     ws: "wss://xahau.network",
     explorerUrl: "https://xahauexplorer.com/en/token/rLRVSaK575YXwwnkC5QSTLK7E1r1ps5TCs/584D455243480000000000000000000000000000",

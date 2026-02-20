@@ -183,7 +183,7 @@ const LIQUIDITY_PROFILE_DEFAULTS = {
   alt: { depthTargetUsd: 500, spreadGoodBps: 60, spreadBadBps: 600 },
 };
 const LIQUIDITY_SCORE_SCALES = {
-  A: { depthWeight: 0.75, spreadWeight: 0.25 },
+  D: { depthWeight: 0.75, spreadWeight: 0.25 },
   B: { depthWeight: 0.85, spreadWeight: 0.15 },
 };
 const LIQUIDITY_TIER_TARGET_MULTIPLIERS = new Map([
@@ -1063,8 +1063,8 @@ function getLiquidityProfile(token){
   return raw === "commercial" ? "commercial" : "alt";
 }
 function getLiquidityScale(token){
-  const raw = String(token?.liquidityScoreScale || "A").toUpperCase();
-  return LIQUIDITY_SCORE_SCALES[raw] ? raw : "A";
+  const raw = String(token?.liquidityScoreScale || "D").toUpperCase();
+  return LIQUIDITY_SCORE_SCALES[raw] ? raw : "D";
 }
 function getLiquidityScoreConfig(token){
   const profile = getLiquidityProfile(token);

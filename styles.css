@@ -253,24 +253,26 @@ select option{
   background:#000;
   color:rgba(255,255,255,.92);
 }
-.btn:hover{
-  transform:translateY(-1px);
-  border-color:rgba(255,255,255,.22);
-  background:rgba(255,255,255,.07);
-  box-shadow:0 12px 35px rgba(0,0,0,.35);
-}
-/* Keep header Explorer + Rich List buttons visually static on hover */
-#btnExplorer:hover{
-  transform:none;
-  border-color:rgba(255,45,45,.35);
-  background:radial-gradient(circle at 20% 20%, rgba(255,45,45,.22), rgba(255,255,255,.05));
-  box-shadow:none;
-}
-.links a[href="#richlist"]:hover{
-  transform:none;
-  border-color:var(--line);
-  background:rgba(255,255,255,.05);
-  box-shadow:none;
+@media (hover: hover) and (pointer: fine){
+  .btn:hover{
+    transform:translateY(-1px);
+    border-color:rgba(255,255,255,.22);
+    background:rgba(255,255,255,.07);
+    box-shadow:0 12px 35px rgba(0,0,0,.35);
+  }
+  /* Keep header Explorer + Rich List buttons visually static on hover */
+  #btnExplorer:hover{
+    transform:none;
+    border-color:rgba(255,45,45,.35);
+    background:radial-gradient(circle at 20% 20%, rgba(255,45,45,.22), rgba(255,255,255,.05));
+    box-shadow:none;
+  }
+  .links a[href="#richlist"]:hover{
+    transform:none;
+    border-color:var(--line);
+    background:rgba(255,255,255,.05);
+    box-shadow:none;
+  }
 }
 .btn.primary{
   border-color:rgba(255,45,45,.35);
@@ -284,9 +286,11 @@ select option{
   border-color: rgba(255,213,74,.45);
   background: radial-gradient(circle at 20% 20%, rgba(255,213,74,.22), rgba(255,255,255,.06));
 }
-.btn.ctaFocus:hover{
-  border-color: rgba(255,213,74,.7);
-  box-shadow: 0 14px 34px rgba(255,213,74,.28);
+@media (hover: hover) and (pointer: fine){
+  .btn.ctaFocus:hover{
+    border-color: rgba(255,213,74,.7);
+    box-shadow: 0 14px 34px rgba(255,213,74,.28);
+  }
 }
 .btn .dot{
   width:9px; height:9px; border-radius:99px;
@@ -375,10 +379,12 @@ select option{
   text-decoration:none;
   transition:transform .12s ease, border-color .12s ease, background .12s ease;
 }
-.pillLink:hover{
-  transform:translateY(-1px);
-  border-color:rgba(255,255,255,.24);
-  background:rgba(255,255,255,.07);
+@media (hover: hover) and (pointer: fine){
+  .pillLink:hover{
+    transform:translateY(-1px);
+    border-color:rgba(255,255,255,.24);
+    background:rgba(255,255,255,.07);
+  }
 }
 .ctaRow{margin-top:14px; margin-bottom:10px; display:flex; gap:10px; flex-wrap:wrap}
 
@@ -548,7 +554,9 @@ input[type="search"]::placeholder{color:rgba(255,255,255,.45)}
   user-select:none;
   transition:transform .12s ease, border-color .12s ease;
 }
-.chip:hover{transform:translateY(-1px); border-color:rgba(255,255,255,.22)}
+@media (hover: hover) and (pointer: fine){
+  .chip:hover{transform:translateY(-1px); border-color:rgba(255,255,255,.22)}
+}
 .chip.active{border-color:rgba(255,45,45,.35); box-shadow:0 0 0 3px rgba(255,45,45,.12)}
 #xahLoadRichlistBtn{
   border-color:rgba(255,213,74,.55);
@@ -556,9 +564,11 @@ input[type="search"]::placeholder{color:rgba(255,255,255,.45)}
   color:rgba(255,239,186,.98);
   box-shadow:0 0 0 2px rgba(255,213,74,.10);
 }
-#xahLoadRichlistBtn:hover{
-  border-color:rgba(255,213,74,.85);
-  background:rgba(255,213,74,.24);
+@media (hover: hover) and (pointer: fine){
+  #xahLoadRichlistBtn:hover{
+    border-color:rgba(255,213,74,.85);
+    background:rgba(255,213,74,.24);
+  }
 }
 
 .tableWrap{
@@ -618,7 +628,9 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
   cursor:pointer;
   user-select:none;
 }
-.copy:hover{border-color:rgba(255,255,255,.22)}
+@media (hover: hover) and (pointer: fine){
+  .copy:hover{border-color:rgba(255,255,255,.22)}
+}
 .bal{font-family:var(--mono); font-weight:800}
 .pct{font-family:var(--mono); color:rgba(255,255,255,.78)}
 
@@ -656,7 +668,9 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
   font-size:12px;
 }
 .foot a{color:rgba(255,255,255,.85); text-decoration:none; border-bottom:1px solid rgba(255,255,255,.18)}
-.foot a:hover{border-bottom-color:rgba(255,255,255,.35)}
+@media (hover: hover) and (pointer: fine){
+  .foot a:hover{border-bottom-color:rgba(255,255,255,.35)}
+}
 
 /* hover */
 .hoverable{
@@ -1113,6 +1127,7 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
   font-size:12px;
   color:rgba(255,255,255,.66);
   line-height:1.22;
+  text-align:center;
 }
 @media (max-width: 768px){
   .xahToolsRow{
