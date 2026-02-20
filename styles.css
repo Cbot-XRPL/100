@@ -1141,6 +1141,9 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
   #xahTeleportCard{
     grid-area:auto;
   }
+  #xahImportCard{order:1;}
+  #xahTeleportCard{order:2;}
+  #xahBitrueCard{order:3;}
 }
 
 /* Final mobile alignment pass */

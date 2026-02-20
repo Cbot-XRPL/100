@@ -58,10 +58,10 @@ window.ONYX_TOKENS = [
     ws: "wss://xahau.network",
     explorerUrl: "https://xahauexplorer.com/en/token/roneGNc3hdSwWZEr54RZceQr8Fftq6fkL/ONE",
     xUrl: "https://x.com/One_Xahau",
-    whitepaper: "ONE is a tiny-supply culture token on Xahau. Core thesis: social coordination through scarce supply, transparent holder distribution, and live DEX participation.",
+    whitepaper: "ONE is a tiny-supply culture token on Xahau focused on building a legendary community through badge challenges, transparent holder distribution, and active DEX participation. Help test the liquidity tool on Xahau as we refine the next scoring tiers.",
     whitepaperHtml: "",
     description:
-      "A tiny-supply culture token built to make you touch the DEX. Genesis of Onyx drops: hold 1+ and you're in the future set.",
+      "A culture token on Xahau built for badge hunters, DEX participants, and early community builders. Help test the liquidity tool on Xahau while we tune baseline rankings into higher tiers.",
     badgeRules: [
       { id: "top1", title: "Top Holder", icon: "\u{1F947}", className: "gold", type: "rank", rank: 1, rule: "Rank #1 wallet" },
       { id: "top2", title: "Runner Up", icon: "\u{1F948}", className: "silver", type: "rank", rank: 2, rule: "Rank #2 wallet" },
