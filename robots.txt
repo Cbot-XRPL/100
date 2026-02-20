@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# Soft crawl-rate guidance (not all bots honor this).
+Crawl-delay: 5

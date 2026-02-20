@@ -157,7 +157,7 @@ document.addEventListener("mouseover", (e) => {
 /* ===== State ===== */
 const TOKENS = Array.isArray(window.ONYX_TOKENS) ? window.ONYX_TOKENS : [];
 const ONE_TOKEN = TOKENS.find((t) => String(t?.id) === "100") || null;
-const BRAND_LOGO_URL = "./onyx-logo.png";
+const BRAND_LOGO_URL = "./media/onyx-logo.png";
 let activeToken = TOKENS[0] || null;
 
 let activeFilter = "all";
@@ -177,6 +177,7 @@ let showAllRows = false;
 let liquidityReqNonce = 0;
 let xahUsdCache = { px: NaN, ts: 0 };
 const LIQUIDITY_POLL_MS = 15000;
+const LIQUIDITY_MIN_REFRESH_MS = 12000;
 const LIQUIDITY_TIER_PCTS = [0.01, 0.02, 0.05, 0.10, 0.20];
 const LIQUIDITY_PROFILE_DEFAULTS = {
   commercial: { depthTargetUsd: 10000, spreadGoodBps: 20, spreadBadBps: 250 },
@@ -195,6 +196,9 @@ const LIQUIDITY_TIER_TARGET_MULTIPLIERS = new Map([
 ]);
 let liquidityPollTimer = null;
 let liquidityBusy = false;
+let lastLiquidityRunTs = 0;
+let lastLiquidityTokenId = "";
+let xahBitrueSnapshotCache = { ts: 0, snap: null };
 let hasLiquidityDataRendered = false;
 const liquidityFirstLoadShownByToken = new Set();
 let dexChartRangeDays = 7;
@@ -1126,6 +1130,7 @@ function stopLiquidityPolling(){
 function startLiquidityPolling(){
   stopLiquidityPolling();
   liquidityPollTimer = setInterval(() => {
+    if (document.hidden) return;
     refreshLiquidityPanel();
   }, LIQUIDITY_POLL_MS);
 }
@@ -1329,6 +1334,10 @@ async function fetchLiquiditySnapshot(token){
   }
 }
 async function fetchBitrueXahLiquiditySnapshot(){
+  const now = Date.now();
+  if (xahBitrueSnapshotCache.snap && (now - xahBitrueSnapshotCache.ts) < 10000){
+    return xahBitrueSnapshotCache.snap;
+  }
   const fetchWithTimeout = async (url, timeoutMs = 12000) => {
     const ctrl = new AbortController();
     const fetchPromise = fetch(url, { cache: "no-store", signal: ctrl.signal });
@@ -1417,7 +1426,7 @@ async function fetchBitrueXahLiquiditySnapshot(){
   const lastPrice = Number(ticker?.lastPrice);
   const volume24hUsd = Number(ticker?.quoteVolume);
 
-  return {
+  const snap = {
     bidsCount: bids.length,
     asksCount: asks.length,
     bestBid,
@@ -1436,6 +1445,8 @@ async function fetchBitrueXahLiquiditySnapshot(){
     imbalanceRatio,
     hasTwoSided
   };
+  xahBitrueSnapshotCache = { ts: now, snap };
+  return snap;
 }
 async function fetchBitrueXahTickerOnly(){
   const url = "https://www.bitrue.com/api/v1/ticker/24hr?symbol=XAHUSDT";
@@ -1454,7 +1465,14 @@ async function fetchBitrueXahTickerOnly(){
 }
 async function refreshLiquidityPanel(){
   if (liquidityBusy) return;
+  const tokenId = String(activeToken?.id || "");
+  const now = Date.now();
+  if (hasLiquidityDataRendered && tokenId === lastLiquidityTokenId && (now - lastLiquidityRunTs) < LIQUIDITY_MIN_REFRESH_MS){
+    return;
+  }
   liquidityBusy = true;
+  lastLiquidityRunTs = now;
+  lastLiquidityTokenId = tokenId;
   const reqNonce = ++liquidityReqNonce;
   const token = activeToken;
   if (!token){
