@@ -204,6 +204,11 @@ const liquidityFirstLoadShownByToken = new Set();
 let dexChartRangeDays = 7;
 let dexChartReqNonce = 0;
 const dexChartCache = new Map();
+const XAH_CHART_STORAGE_KEY = "onyx.dexchart.xah.365d.v1";
+const XAH_CHART_TTL_MS = 10 * 60 * 1000;
+const COINGECKO_MIN_REQUEST_GAP_MS = 2500;
+let coingeckoLastRequestTs = 0;
+let coingeckoCooldownUntil = 0;
 const loadedRichlistTokenIds = new Set();
 let richlistObserver = null;
 let renderedHoldersTokenId = null;
@@ -724,9 +729,7 @@ async function fetchXahUsdPrice(){
     return xahUsdCache.px;
   }
   const url = "https://api.coingecko.com/api/v3/simple/price?ids=xahau&vs_currencies=usd";
-  const resp = await fetch(url, { cache: "no-store" });
-  if (!resp.ok) throw new Error("xah usd http");
-  const data = await resp.json();
+  const data = await fetchJsonNoStore(url, 10000);
   const px = Number(data?.xahau?.usd);
   if (!Number.isFinite(px) || px <= 0) throw new Error("xah usd invalid");
   xahUsdCache = { px, ts: now };
@@ -833,15 +836,117 @@ function writeDexChartCache(token, days, payload){
     ts: Date.now()
   });
 }
+function readStoredXahChart365(){
+  try{
+    const raw = localStorage.getItem(XAH_CHART_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.series) || !Number.isFinite(parsed.ts)) return null;
+    return parsed;
+  }catch{
+    return null;
+  }
+}
+function writeStoredXahChart365(series){
+  try{
+    localStorage.setItem(XAH_CHART_STORAGE_KEY, JSON.stringify({
+      ts: Date.now(),
+      series
+    }));
+  }catch{
+    // ignore quota/private mode errors
+  }
+}
+function sliceSeriesByDays(series, days){
+  if (!Array.isArray(series) || !series.length) return [];
+  const dayCount = Math.max(1, Number(days) || 7);
+  const newestTs = Number(series[series.length - 1]?.t);
+  if (!Number.isFinite(newestTs)) return [];
+  const cutoff = newestTs - (dayCount * 24 * 60 * 60 * 1000);
+  const sliced = series.filter((p) => Number.isFinite(p?.t) && Number(p.t) >= cutoff);
+  return sliced.length ? sliced : series.slice(-Math.max(1, Math.min(series.length, dayCount)));
+}
+function buildExactDailySeries(series, days){
+  if (!Array.isArray(series) || !series.length) return [];
+  const dayMs = 24 * 60 * 60 * 1000;
+  const sorted = [...series]
+    .filter((p) => Number.isFinite(p?.t) && Number.isFinite(p?.o) && Number.isFinite(p?.h) && Number.isFinite(p?.l) && Number.isFinite(p?.c))
+    .sort((a, b) => Number(a.t) - Number(b.t));
+  if (!sorted.length) return [];
+
+  const dayBuckets = new Map();
+  for (const p of sorted){
+    const dayTs = Math.floor(Number(p.t) / dayMs) * dayMs;
+    const existing = dayBuckets.get(dayTs);
+    if (!existing){
+      dayBuckets.set(dayTs, { t: dayTs, o: Number(p.o), h: Number(p.h), l: Number(p.l), c: Number(p.c) });
+    } else {
+      existing.h = Math.max(existing.h, Number(p.h));
+      existing.l = Math.min(existing.l, Number(p.l));
+      existing.c = Number(p.c);
+    }
+  }
+
+  const dayCount = Math.max(1, Number(days) || 7);
+  const newestDay = Math.floor(Number(sorted[sorted.length - 1].t) / dayMs) * dayMs;
+  const oldestDay = newestDay - ((dayCount - 1) * dayMs);
+
+  let seed = Number(sorted[0].c);
+  for (const ts of Array.from(dayBuckets.keys()).sort((a, b) => a - b)){
+    if (ts >= oldestDay){
+      seed = Number(dayBuckets.get(ts)?.o);
+      break;
+    }
+  }
+
+  const out = [];
+  let prevClose = Number.isFinite(seed) ? seed : Number(sorted[0].c);
+  for (let ts = oldestDay; ts <= newestDay; ts += dayMs){
+    const b = dayBuckets.get(ts);
+    if (b){
+      out.push({ t: ts, o: b.o, h: b.h, l: b.l, c: b.c });
+      prevClose = b.c;
+    } else {
+      out.push({ t: ts, o: prevClose, h: prevClose, l: prevClose, c: prevClose });
+    }
+  }
+  return out;
+}
 async function fetchJsonNoStore(url, timeoutMs = 12000){
+  const isCoinGecko = /api\.coingecko\.com/i.test(String(url || ""));
+  if (isCoinGecko){
+    const now = Date.now();
+    if (coingeckoCooldownUntil > now){
+      throw new Error(`coingecko cooldown ${Math.ceil((coingeckoCooldownUntil - now) / 1000)}s`);
+    }
+    const waitMs = Math.max(0, (coingeckoLastRequestTs + COINGECKO_MIN_REQUEST_GAP_MS) - now);
+    if (waitMs > 0){
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+    coingeckoLastRequestTs = Date.now();
+  }
+
   const ctrl = new AbortController();
   const t = setTimeout(() => {
     try{ ctrl.abort(); }catch{}
   }, timeoutMs);
   try{
     const resp = await fetch(url, { cache: "no-store", signal: ctrl.signal });
-    if (!resp.ok) throw new Error(`http ${resp.status}`);
+    if (!resp.ok){
+      if (isCoinGecko && resp.status === 429){
+        const retryAfterRaw = Number(resp.headers.get("Retry-After"));
+        const retryAfterSec = Number.isFinite(retryAfterRaw) && retryAfterRaw > 0 ? retryAfterRaw : 45;
+        coingeckoCooldownUntil = Math.max(coingeckoCooldownUntil, Date.now() + (retryAfterSec * 1000));
+      }
+      throw new Error(`http ${resp.status}`);
+    }
     return await resp.json();
+  }catch (err){
+    if (isCoinGecko){
+      // Browser can surface CoinGecko 429 as CORS/network failures; back off anyway.
+      coingeckoCooldownUntil = Math.max(coingeckoCooldownUntil, Date.now() + 60000);
+    }
+    throw err;
   } finally {
     clearTimeout(t);
   }
@@ -870,9 +975,31 @@ function setDexChartPairLabel(token){
 }
 async function fetchDexChartHistory(token, days){
   if (isNativeXahToken(token)){
-    const dayParam = [1, 7, 14, 30, 90, 180, 365].includes(days) ? days : 30;
-    const stamp = Date.now();
-    const ohlcUrl = `https://api.coingecko.com/api/v3/coins/xahau/ohlc?vs_currency=usd&days=${dayParam}&x=${stamp}`;
+    const stored365 = readStoredXahChart365();
+    const now = Date.now();
+    if (stored365?.series?.length && (now - stored365.ts) < XAH_CHART_TTL_MS){
+      return { series: buildExactDailySeries(stored365.series, days), alreadyUsd: true };
+    }
+
+    if (coingeckoCooldownUntil > Date.now()){
+      if (stored365?.series?.length){
+        return { series: buildExactDailySeries(stored365.series, days), alreadyUsd: true };
+      }
+      const seed = Number.isFinite(xahUsdCache?.px) && xahUsdCache.px > 0 ? Number(xahUsdCache.px) : NaN;
+      if (Number.isFinite(seed) && seed > 0){
+        const count = Math.max(8, Math.min(60, Number(days) || 30));
+        const now = Date.now();
+        const stepMs = Math.max(60_000, Math.floor(((Number(days) || 30) * 24 * 60 * 60 * 1000) / count));
+        const series = Array.from({ length: count }, (_, i) => {
+          const t = now - ((count - 1 - i) * stepMs);
+          return { t, o: seed, h: seed, l: seed, c: seed };
+        });
+        return { series, alreadyUsd: true };
+      }
+    }
+
+    const dayParam = 365;
+    const ohlcUrl = `https://api.coingecko.com/api/v3/coins/xahau/ohlc?vs_currency=usd&days=${dayParam}`;
     try{
       const arr = await fetchJsonNoStore(ohlcUrl, 12000);
       if (!Array.isArray(arr)) return { series: [], alreadyUsd: true };
@@ -894,23 +1021,72 @@ async function fetchDexChartHistory(token, days){
           x.l > 0
         )
         .sort((a, b) => a.t - b.t);
-      if (series.length) return { series, alreadyUsd: true };
+      if (series.length){
+        writeStoredXahChart365(series);
+        return { series: buildExactDailySeries(series, days), alreadyUsd: true };
+      }
     }catch{
       // fallback below
     }
 
-    const marketUrl = `https://api.coingecko.com/api/v3/coins/xahau/market_chart?vs_currency=usd&days=${dayParam}&x=${stamp}`;
-    const market = await fetchJsonNoStore(marketUrl, 12000);
-    const prices = Array.isArray(market?.prices) ? market.prices : [];
-    const series = prices
-      .map((p) => {
-        const t = Number(p?.[0]);
-        const px = Number(p?.[1]);
-        return { t, o: px, h: px, l: px, c: px };
-      })
-      .filter((x) => Number.isFinite(x.t) && Number.isFinite(x.c) && x.c > 0)
-      .sort((a, b) => a.t - b.t);
-    return { series, alreadyUsd: true };
+    const marketUrl = `https://api.coingecko.com/api/v3/coins/xahau/market_chart?vs_currency=usd&days=${dayParam}`;
+    try{
+      const market = await fetchJsonNoStore(marketUrl, 12000);
+      const prices = Array.isArray(market?.prices) ? market.prices : [];
+      const series = prices
+        .map((p) => {
+          const t = Number(p?.[0]);
+          const px = Number(p?.[1]);
+          return { t, o: px, h: px, l: px, c: px };
+        })
+        .filter((x) => Number.isFinite(x.t) && Number.isFinite(x.c) && x.c > 0)
+        .sort((a, b) => a.t - b.t);
+      if (series.length){
+        writeStoredXahChart365(series);
+        return { series: buildExactDailySeries(series, days), alreadyUsd: true };
+      }
+    }catch{
+      // final fallback below
+    }
+
+    if (stored365?.series?.length){
+      return { series: buildExactDailySeries(stored365.series, days), alreadyUsd: true };
+    }
+
+    // Keep XAH chart alive when upstream API is rate-limited/unavailable.
+    let seedPrice = (Number.isFinite(xahUsdCache?.px) && xahUsdCache.px > 0)
+      ? Number(xahUsdCache.px)
+      : NaN;
+    if (!Number.isFinite(seedPrice) || seedPrice <= 0){
+      try{
+        seedPrice = await fetchXahUsdPrice();
+      }catch{
+        // continue to cache seed fallback below
+      }
+    }
+    if (!Number.isFinite(seedPrice) || seedPrice <= 0){
+      for (const [k, v] of dexChartCache.entries()){
+        if (!String(k).startsWith("xah:")) continue;
+        if (!v || !Array.isArray(v.series) || !v.series.length) continue;
+        const c = Number(v.series[v.series.length - 1]?.c);
+        if (Number.isFinite(c) && c > 0){
+          seedPrice = c;
+          break;
+        }
+      }
+    }
+    if (Number.isFinite(seedPrice) && seedPrice > 0){
+      const count = Math.max(8, Math.min(60, dayParam));
+      const now = Date.now();
+      const stepMs = Math.max(60_000, Math.floor((dayParam * 24 * 60 * 60 * 1000) / count));
+      const series = Array.from({ length: count }, (_, i) => {
+        const t = now - ((count - 1 - i) * stepMs);
+        return { t, o: seedPrice, h: seedPrice, l: seedPrice, c: seedPrice };
+      });
+      return { series, alreadyUsd: true };
+    }
+
+    return { series: [], alreadyUsd: true };
   }
 
   const base = chartPairBase(token);
@@ -965,6 +1141,19 @@ function fmtChartPrice(v, { hasUsd, alreadyUsd, xahUsd }){
   if (!Number.isFinite(usdValue)) return "-";
   return `$${fmtChartScalar(usdValue, 5)}`;
 }
+function fmtChartAxisPrice(v, { axisInUsd, alreadyUsd, xahUsd }){
+  if (!Number.isFinite(v)) return "-";
+  if (axisInUsd){
+    const usdValue = alreadyUsd ? Number(v) : (Number(v) * Number(xahUsd));
+    if (!Number.isFinite(usdValue)) return "-";
+    const absUsd = Math.abs(usdValue);
+    const decimals = absUsd >= 1 ? 2 : 4;
+    return `${usdValue.toFixed(decimals)} USD`;
+  }
+  const xahValue = alreadyUsd ? (Number(v) / Number(xahUsd)) : Number(v);
+  if (!Number.isFinite(xahValue)) return "-";
+  return `${Math.round(xahValue)} XAH`;
+}
 function renderDexChart(series, xahUsd = NaN, alreadyUsd = false){
   if (!dexChartMeta || !dexChartEmpty || !dexChartLow || !dexChartHigh || !dexChartLast || !dexChartGrid || !dexChartCandles){
     return;
@@ -991,13 +1180,26 @@ function renderDexChart(series, xahUsd = NaN, alreadyUsd = false){
   const lows = series.map((p) => p.l);
   const minY = Math.min(...lows);
   const maxY = Math.max(...highs);
-  const span = Math.max(1e-9, maxY - minY);
-  const yFrom = (v) => 93 - ((v - minY) / span) * 86;
   const ns = "http://www.w3.org/2000/svg";
 
   const gridLevels = 4;
   const plotXMin = 0;
   const plotXMax = 100;
+  const axisSpanRaw = Math.max(1e-9, maxY - minY);
+  const roughStep = axisSpanRaw / Math.max(1, gridLevels - 1);
+  const pow10 = Math.pow(10, Math.floor(Math.log10(Math.max(1e-12, roughStep))));
+  const stepFrac = roughStep / pow10;
+  const niceFrac = stepFrac <= 1 ? 1 : (stepFrac <= 2 ? 2 : (stepFrac <= 5 ? 5 : 10));
+  const axisStepRaw = Math.max(1e-12, niceFrac * pow10);
+  let axisTopRaw = Math.ceil(maxY / axisStepRaw) * axisStepRaw;
+  let axisBottomRaw = axisTopRaw - axisStepRaw * (gridLevels - 1);
+  if (axisBottomRaw > minY){
+    axisBottomRaw = Math.floor(minY / axisStepRaw) * axisStepRaw;
+    axisTopRaw = axisBottomRaw + axisStepRaw * (gridLevels - 1);
+  }
+  const axisSpanFinal = Math.max(1e-9, axisTopRaw - axisBottomRaw);
+  const yFrom = (v) => 93 - ((v - axisBottomRaw) / axisSpanFinal) * 86;
+  const axisInUsd = isNativeXahToken(activeToken);
   for (let i = 0; i < gridLevels; i++){
     const t = i / (gridLevels - 1);
     const y = 7 + (t * 86);
@@ -1009,11 +1211,11 @@ function renderDexChart(series, xahUsd = NaN, alreadyUsd = false){
     dexChartGrid.appendChild(line);
 
     if (dexChartAxis){
-      const valXah = maxY - t * (maxY - minY);
+      const valRaw = axisTopRaw - (axisStepRaw * i);
       const tick = document.createElement("div");
       tick.className = "chartAxisTick";
       tick.style.top = `${y.toFixed(2)}%`;
-      tick.textContent = toDisplay(valXah);
+      tick.textContent = fmtChartAxisPrice(valRaw, { axisInUsd, alreadyUsd, xahUsd });
       dexChartAxis.appendChild(tick);
     }
   }
@@ -1090,15 +1292,18 @@ async function loadDexChartHistory(){
   }
   try{
     updateLoadBarTask(chartTaskId, { label: `Loading ${activeToken.symbol || "token"} chart candles...`, target: 40 });
+    const xahUsdTask = isNativeXahToken(tokenAtRequest)
+      ? Promise.resolve(Number.isFinite(xahUsdCache.px) ? xahUsdCache.px : NaN)
+      : (async () => {
+          try{
+            return await fetchXahUsdPrice();
+          }catch{
+            return Number.isFinite(xahUsdCache.px) ? xahUsdCache.px : NaN;
+          }
+        })();
     const [hist, xahUsd] = await Promise.all([
       fetchDexChartHistory(tokenAtRequest, daysAtRequest),
-      (async () => {
-        try{
-          return await fetchXahUsdPrice();
-        }catch{
-          return Number.isFinite(xahUsdCache.px) ? xahUsdCache.px : NaN;
-        }
-      })()
+      xahUsdTask
     ]);
     if (reqNonce !== dexChartReqNonce) return;
     updateLoadBarTask(chartTaskId, { label: `Rendering ${activeToken.symbol || "token"} chart...`, target: 86 });

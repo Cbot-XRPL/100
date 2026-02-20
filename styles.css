@@ -1047,20 +1047,19 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
     min-height:34px;
   }
   .chartRow{
-    grid-template-columns:1fr;
+    grid-template-columns:minmax(0,1fr) auto;
     gap:8px;
   }
   .chartAxis{
-    width:100%;
-    height:auto;
-    display:grid;
-    grid-template-columns:repeat(4,minmax(0,1fr));
-    gap:6px;
+    width:64px;
+    height:180px;
+    display:block;
   }
   .chartAxisTick{
-    position:static;
-    transform:none;
-    text-align:center;
+    position:absolute;
+    right:2px;
+    transform:translateY(-50%);
+    text-align:right;
     font-size:11px;
   }
   .metricRow{
