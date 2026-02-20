@@ -26,6 +26,10 @@ const cardHint = document.getElementById("cardHint");
 const pillRow = document.getElementById("pillRow");
 const statSupply = document.getElementById("statSupply");
 const statEmoji = document.getElementById("statEmoji");
+const statLedgerCard = document.getElementById("statLedgerCard");
+const statLedgerIndex = document.getElementById("statLedgerIndex");
+const statVersionCard = document.getElementById("statVersionCard");
+const statNodeVersion = document.getElementById("statNodeVersion");
 const panelEmojiDecent = document.getElementById("panelEmojiDecent");
 const panelEmojiFeed = document.getElementById("panelEmojiFeed");
 const panelEmojiRich = document.getElementById("panelEmojiRich");
@@ -37,11 +41,17 @@ const btnExplorer = document.getElementById("btnExplorer");
 const btnTokenDetails = document.getElementById("btnTokenDetails");
 const btnTrustline = document.getElementById("btnTrustline");
 const btnTrade = document.getElementById("btnTrade");
+const btnXahImport = document.getElementById("btnXahImport");
+const btnXahTeleport = document.getElementById("btnXahTeleport");
+const xahToolsRow = document.getElementById("xahToolsRow");
 const btnX = document.getElementById("btnX");
 const footExplorer = document.getElementById("footExplorer");
 const footX = document.getElementById("footX");
 
 const rowsEl = document.getElementById("rows");
+const treasuryPane = document.getElementById("treasuryPane");
+const treasuryMeta = document.getElementById("treasuryMeta");
+const treasuryList = document.getElementById("treasuryList");
 const searchEl = document.getElementById("search");
 const dataStatusEl = document.getElementById("dataStatus");
 const statPriceUsdEl = document.getElementById("statPriceUsd");
@@ -110,10 +120,24 @@ function spawnEmoji(){
   el.style.opacity = rand(0.06, 0.16);
   emojiField.appendChild(el);
 }
-for (let i=0;i<EMOJI_COUNT;i++) spawnEmoji();
+function clearEmojiField(){
+  if (!emojiField) return;
+  emojiField.innerHTML = "";
+}
+function setEmojiFieldForToken(token){
+  const isOneToken = String(token?.id) === "100";
+  if (!isOneToken){
+    clearEmojiField();
+    return;
+  }
+  if ((emojiField?.children?.length || 0) >= EMOJI_COUNT) return;
+  clearEmojiField();
+  for (let i=0;i<EMOJI_COUNT;i++) spawnEmoji();
+}
 
 const ACCENTS = [ "#ffd54a",];
 let accentIndex = 0;
+document.documentElement.style.setProperty("--accent", ACCENTS[0]);
 document.addEventListener("mouseover", (e) => {
   const t = e.target;
   if (!t?.classList) return;
@@ -125,6 +149,8 @@ document.addEventListener("mouseover", (e) => {
 
 /* ===== State ===== */
 const TOKENS = Array.isArray(window.ONYX_TOKENS) ? window.ONYX_TOKENS : [];
+const ONE_TOKEN = TOKENS.find((t) => String(t?.id) === "100") || null;
+const BRAND_LOGO_URL = "./onyx-logo.png";
 let activeToken = TOKENS[0] || null;
 
 let activeFilter = "all";
@@ -144,8 +170,26 @@ let showAllRows = false;
 let liquidityReqNonce = 0;
 let xahUsdCache = { px: NaN, ts: 0 };
 const LIQUIDITY_POLL_MS = 15000;
+const LIQUIDITY_TIER_PCTS = [0.01, 0.02, 0.05, 0.10, 0.20];
+const LIQUIDITY_PROFILE_DEFAULTS = {
+  commercial: { depthTargetUsd: 10000, spreadGoodBps: 20, spreadBadBps: 250 },
+  alt: { depthTargetUsd: 500, spreadGoodBps: 60, spreadBadBps: 600 },
+};
+const LIQUIDITY_SCORE_SCALES = {
+  A: { depthWeight: 0.75, spreadWeight: 0.25 },
+  B: { depthWeight: 0.85, spreadWeight: 0.15 },
+};
+const LIQUIDITY_TIER_TARGET_MULTIPLIERS = new Map([
+  [0.01, 0.55],
+  [0.02, 0.65],
+  [0.05, 0.80],
+  [0.10, 0.90],
+  [0.20, 1.00],
+]);
 let liquidityPollTimer = null;
 let liquidityBusy = false;
+let hasLiquidityDataRendered = false;
+const liquidityFirstLoadShownByToken = new Set();
 let dexChartRangeDays = 7;
 let dexChartReqNonce = 0;
 const loadedRichlistTokenIds = new Set();
@@ -154,6 +198,8 @@ let renderedHoldersTokenId = null;
 let richListLoadNonce = 0;
 let xahApproxStatsMode = false;
 let xahSupplySnapshot = { circulating: NaN, fullSupply: NaN, accounts: NaN, ts: 0 };
+let xahHeroInfoReqNonce = 0;
+let xahNetworkInfoCache = { ledgerIndex: NaN, version: "", ts: 0 };
 const XAH_FALLBACK_SNAPSHOT = {
   circulating: 489293309.31,
   fullSupply: 644606185.90,
@@ -228,21 +274,28 @@ function buildXahApproxHolders({ circulating, accounts, topHolders = [] }){
   const circ = Number(circulating);
   if (!Number.isFinite(circ) || circ <= 0) return [];
 
+  const presetTopShares = [0.14, 0.09, 0.065, 0.045, 0.03, 0.022, 0.016, 0.012, 0.009, 0.007];
+  const presetTopHolders = presetTopShares.map((share, i) => ({
+    address: `rXahPresetTop${String(i + 1).padStart(6, "0")}`,
+    balance: circ * share
+  }));
+
   const sanitizedTop = (Array.isArray(topHolders) ? topHolders : [])
     .map((h, i) => ({
       address: String(h?.address || `rXahTemplateTop${String(i + 1).padStart(6, "0")}`),
       balance: Number(h?.balance) || 0
     }))
     .filter((h) => h.balance > 0);
+  const seededTop = sanitizedTop.length ? sanitizedTop : presetTopHolders;
 
   const holderEstimate = Number.isFinite(Number(accounts)) && Number(accounts) > 0
     ? Math.floor(Number(accounts))
     : 12000;
-  const targetCount = Math.max(sanitizedTop.length + 4000, Math.min(30000, holderEstimate));
-  const topSum = sanitizedTop.reduce((acc, h) => acc + h.balance, 0);
+  const targetCount = Math.max(seededTop.length + 4000, Math.min(30000, holderEstimate));
+  const topSum = seededTop.reduce((acc, h) => acc + h.balance, 0);
   const normalizedTop = topSum > circ
-    ? sanitizedTop.map((h) => ({ ...h, balance: (h.balance / topSum) * circ }))
-    : sanitizedTop;
+    ? seededTop.map((h) => ({ ...h, balance: (h.balance / topSum) * circ }))
+    : seededTop;
   const normalizedTopSum = normalizedTop.reduce((acc, h) => acc + h.balance, 0);
   const tailSupply = Math.max(0, circ - normalizedTopSum);
   const tailCount = Math.max(0, targetCount - normalizedTop.length);
@@ -289,6 +342,24 @@ function getExcludedAddressSet(token){
     set.add(String(token.issuer).trim());
   }
   return set;
+}
+function getExcludedWallets(token){
+  const wallets = [];
+  const seen = new Set();
+  const pushWallet = (address, kind) => {
+    const addr = String(address || "").trim();
+    if (!addr || seen.has(addr)) return;
+    seen.add(addr);
+    wallets.push({ address: addr, kind });
+  };
+
+  if (token?.excludeIssuer && token?.issuer){
+    pushWallet(token.issuer, "Issuer");
+  }
+  for (const addr of (Array.isArray(token?.excludedAddresses) ? token.excludedAddresses : [])){
+    pushWallet(addr, "Treasury");
+  }
+  return wallets;
 }
 function getTokenCurrency(token){
   if (token?.nativeXah) return "XAH";
@@ -468,6 +539,21 @@ function setTokenLogo(elm, token, fallbackText){
   };
   elm.appendChild(img);
 }
+function setBrandLogo(){
+  if (!brandEmoji) return;
+  brandEmoji.innerHTML = "";
+  const img = document.createElement("img");
+  img.className = "brandLogoImg";
+  img.src = BRAND_LOGO_URL;
+  img.alt = "Onyx logo";
+  img.loading = "eager";
+  img.decoding = "async";
+  img.onerror = () => {
+    brandEmoji.innerHTML = "";
+    brandEmoji.textContent = "ONYX";
+  };
+  brandEmoji.appendChild(img);
+}
 
 /* ===== Utils ===== */
 function shortAddr(a){
@@ -489,6 +575,16 @@ function fmt(n){
 function fmtPrice(n){
   // dynamic-ish but cheap: show up to 6 decimals, trim trailing zeros
   return Number(n).toFixed(6).replace(/0+$/,'').replace(/\.$/,'');
+}
+function fmtSupplyStat(token, n){
+  const v = Number(n);
+  if (!Number.isFinite(v)) return "-";
+  return Math.round(v).toLocaleString("en-US");
+}
+function fmtLedgerIndex(n){
+  const v = Number(n);
+  if (!Number.isFinite(v) || v <= 0) return "-";
+  return Math.floor(v).toLocaleString("en-US");
 }
 function pctOfSupply(balance){
   return (balance / activeToken.totalSupply) * 100;
@@ -517,9 +613,9 @@ function setHeroUsdPrice(valueText){
 function renderLiquiditySkeleton(label){
   renderLiquidityMetrics([
     { k: "Accessible USD (2% slip)", v: label || "$0" },
-    { k: "Book Imbalance (S/B)", v: label || "0" },
-    { k: "Buy Depth (5% slip)", v: label || "$0" },
-    { k: "Sell Depth (5% slip)", v: label || "$0" }
+    { k: "Accessible USD (5% slip)", v: label || "$0" },
+    { k: "Accessible USD (10% slip)", v: label || "$0" },
+    { k: "Accessible USD (20% slip)", v: label || "$0" }
   ]);
 }
 function setLiquidityLoading(msg){
@@ -615,6 +711,63 @@ async function fetchXahSupplyInfo(){
     fullSupply: Number.isFinite(fullSupply) ? fullSupply : NaN,
     accounts: Number.isFinite(accounts) ? accounts : NaN
   };
+}
+async function fetchXahNetworkInfo(wsUrl){
+  const now = Date.now();
+  if (Number.isFinite(xahNetworkInfoCache.ledgerIndex) && (now - xahNetworkInfoCache.ts) < 60000){
+    return xahNetworkInfoCache;
+  }
+
+  const ws = new WebSocket(wsUrl || "wss://xahau.network");
+  await new Promise((resolve, reject) => {
+    ws.addEventListener("open", resolve, { once: true });
+    ws.addEventListener("error", () => reject(new Error("xah info ws connect failed")), { once: true });
+  });
+
+  try{
+    const result = await wsRequest(ws, { command: "server_info" });
+    const info = result?.info || {};
+    const ledgerIndex = Number(info?.validated_ledger?.seq);
+    const version = String(info?.build_version || info?.server_version || "").trim();
+    xahNetworkInfoCache = {
+      ledgerIndex: Number.isFinite(ledgerIndex) ? ledgerIndex : NaN,
+      version,
+      ts: Date.now()
+    };
+    return xahNetworkInfoCache;
+  } finally {
+    ws.close();
+  }
+}
+function setXahHeroExtraStatsVisible(isVisible){
+  if (statLedgerCard) statLedgerCard.style.display = isVisible ? "" : "none";
+  if (statVersionCard) statVersionCard.style.display = isVisible ? "" : "none";
+  if (!isVisible){
+    if (statLedgerIndex) statLedgerIndex.textContent = "-";
+    if (statNodeVersion) statNodeVersion.textContent = "-";
+  }
+}
+async function refreshXahHeroExtraStats(){
+  if (!isNativeXahToken(activeToken)){
+    setXahHeroExtraStatsVisible(false);
+    return;
+  }
+
+  setXahHeroExtraStatsVisible(true);
+  if (statLedgerIndex) statLedgerIndex.textContent = "loading...";
+  if (statNodeVersion) statNodeVersion.textContent = "loading...";
+
+  const reqNonce = ++xahHeroInfoReqNonce;
+  try{
+    const info = await fetchXahNetworkInfo(activeToken?.ws);
+    if (reqNonce !== xahHeroInfoReqNonce || !isNativeXahToken(activeToken)) return;
+    if (statLedgerIndex) statLedgerIndex.textContent = fmtLedgerIndex(info?.ledgerIndex);
+    if (statNodeVersion) statNodeVersion.textContent = info?.version || "-";
+  }catch{
+    if (reqNonce !== xahHeroInfoReqNonce || !isNativeXahToken(activeToken)) return;
+    if (statLedgerIndex) statLedgerIndex.textContent = "-";
+    if (statNodeVersion) statNodeVersion.textContent = "-";
+  }
 }
 function fmtUsd(n){
   if (!Number.isFinite(n) || n <= 0) return "-";
@@ -712,15 +865,21 @@ function fmtPct(n){
   const sign = n > 0 ? "+" : "";
   return `${sign}${n.toFixed(2)}%`;
 }
+function fmtChartPrice(v, { hasUsd, alreadyUsd, xahUsd }){
+  if (!Number.isFinite(v)) return "-";
+  if (!hasUsd){
+    return `${Number(v).toFixed(6)} XAH`;
+  }
+  const usdValue = alreadyUsd ? Number(v) : (Number(v) * Number(xahUsd));
+  if (!Number.isFinite(usdValue)) return "-";
+  return `$${usdValue.toFixed(4)}`;
+}
 function renderDexChart(series, xahUsd = NaN, alreadyUsd = false){
   if (!dexChartMeta || !dexChartEmpty || !dexChartLow || !dexChartHigh || !dexChartLast || !dexChartGrid || !dexChartCandles){
     return;
   }
   const hasUsd = alreadyUsd || (Number.isFinite(xahUsd) && xahUsd > 0);
-  const toDisplay = (v) => {
-    if (!hasUsd) return `${fmtPrice(v)} XAH`;
-    return fmtUsd(alreadyUsd ? v : (v * xahUsd));
-  };
+  const toDisplay = (v) => fmtChartPrice(v, { hasUsd, alreadyUsd, xahUsd });
 
   dexChartGrid.innerHTML = "";
   dexChartCandles.innerHTML = "";
@@ -820,6 +979,7 @@ async function loadDexChartHistory(){
     renderDexChart([], NaN, false);
     return;
   }
+  const chartTaskId = beginLoadBarTask(`Loading ${activeToken.symbol || "token"} chart...`, 12);
   setDexRangeButtons();
   if (dexChartMeta) dexChartMeta.textContent = "loading";
   if (dexChartEmpty){
@@ -827,6 +987,7 @@ async function loadDexChartHistory(){
     dexChartEmpty.style.display = "";
   }
   try{
+    updateLoadBarTask(chartTaskId, { label: `Loading ${activeToken.symbol || "token"} chart candles...`, target: 40 });
     const [hist, xahUsd] = await Promise.all([
       fetchDexChartHistory(activeToken, dexChartRangeDays),
       (async () => {
@@ -838,11 +999,14 @@ async function loadDexChartHistory(){
       })()
     ]);
     if (reqNonce !== dexChartReqNonce) return;
+    updateLoadBarTask(chartTaskId, { label: `Rendering ${activeToken.symbol || "token"} chart...`, target: 86 });
     renderDexChart(hist.series || [], xahUsd, Boolean(hist.alreadyUsd));
   }catch{
     if (reqNonce !== dexChartReqNonce) return;
     if (dexChartMeta) dexChartMeta.textContent = "api error";
     renderDexChart([], NaN, false);
+  } finally {
+    endLoadBarTask(chartTaskId, "Chart updated");
   }
 }
 function stopLiquidityPolling(){
@@ -856,12 +1020,96 @@ function startLiquidityPolling(){
     refreshLiquidityPanel();
   }, LIQUIDITY_POLL_MS);
 }
-function buildLiquidityScore({ accessibleXah, spreadBps, hasTwoSided }){
-  const depthNorm = Math.log10(1 + Math.max(0, accessibleXah)) / Math.log10(1 + 500);
-  const depthScore = clamp(depthNorm * 100, 0, 100);
-  const spreadPenalty = Number.isFinite(spreadBps) ? clamp(spreadBps / 35, 0, 35) : 35;
-  const sidePenalty = hasTwoSided ? 0 : 35;
-  return Math.round(clamp(depthScore - spreadPenalty - sidePenalty + 8, 0, 100));
+function getLiquidityProfile(token){
+  const raw = String(token?.liquidityProfile || (isNativeXahToken(token) ? "commercial" : "alt")).toLowerCase();
+  return raw === "commercial" ? "commercial" : "alt";
+}
+function getLiquidityScale(token){
+  const raw = String(token?.liquidityScoreScale || "A").toUpperCase();
+  return LIQUIDITY_SCORE_SCALES[raw] ? raw : "A";
+}
+function getLiquidityScoreConfig(token){
+  const profile = getLiquidityProfile(token);
+  const profileDefaults = LIQUIDITY_PROFILE_DEFAULTS[profile];
+  const scale = getLiquidityScale(token);
+  const scaleConfig = LIQUIDITY_SCORE_SCALES[scale];
+
+  const depthTargetUsd = Number.isFinite(Number(token?.liquidityDepthTargetUsd))
+    ? Math.max(1, Number(token.liquidityDepthTargetUsd))
+    : profileDefaults.depthTargetUsd;
+  const spreadGoodBps = Number.isFinite(Number(token?.liquiditySpreadGoodBps))
+    ? Math.max(1, Number(token.liquiditySpreadGoodBps))
+    : profileDefaults.spreadGoodBps;
+  const spreadBadBps = Number.isFinite(Number(token?.liquiditySpreadBadBps))
+    ? Math.max(spreadGoodBps + 1, Number(token.liquiditySpreadBadBps))
+    : profileDefaults.spreadBadBps;
+
+  return {
+    profile,
+    scale,
+    depthTargetUsd,
+    spreadGoodBps,
+    spreadBadBps,
+    depthWeight: scaleConfig.depthWeight,
+    spreadWeight: scaleConfig.spreadWeight,
+  };
+}
+function getTierByPct(tiers, pct){
+  const target = Number(pct);
+  return (Array.isArray(tiers) ? tiers : []).find((t) => Math.abs(Number(t?.pct) - target) < 1e-9) || null;
+}
+function fmtSlipPct(pct){
+  const n = Number(pct);
+  return Number.isFinite(n) ? `${Math.round(n * 100)}%` : "-";
+}
+function fmtSpreadPctFromBps(spreadBps){
+  if (!Number.isFinite(spreadBps)) return "-";
+  return `${(spreadBps / 100).toFixed(2)}%`;
+}
+function formatLiquidityProfileLabel(profile){
+  return profile === "commercial" ? "Commerical" : "Alt";
+}
+function spreadScoreFromBps(spreadBps, goodBps, badBps){
+  if (!Number.isFinite(spreadBps)) return 0;
+  if (spreadBps <= goodBps) return 100;
+  if (spreadBps >= badBps) return 0;
+  const ratio = (spreadBps - goodBps) / (badBps - goodBps);
+  return clamp((1 - ratio) * 100, 0, 100);
+}
+function buildLiquidityScore({ token, tierDepthsUsd, spreadBps, hasTwoSided }){
+  const config = getLiquidityScoreConfig(token);
+  if (!hasTwoSided){
+    return { score: 0, depthScore: 0, spreadScore: 0, config };
+  }
+
+  const tierWeights = new Map([
+    [0.01, 0.12],
+    [0.02, 0.18],
+    [0.05, 0.28],
+    [0.10, 0.22],
+    [0.20, 0.20],
+  ]);
+
+  let weightedDepth = 0;
+  for (const pct of LIQUIDITY_TIER_PCTS){
+    const tier = getTierByPct(tierDepthsUsd, pct);
+    const accessibleUsd = Number(tier?.accessibleUsd);
+    const tierTarget = config.depthTargetUsd * (LIQUIDITY_TIER_TARGET_MULTIPLIERS.get(pct) || 1);
+    const normalized = Number.isFinite(accessibleUsd)
+      ? clamp(accessibleUsd / tierTarget, 0, 1)
+      : 0;
+    weightedDepth += normalized * (tierWeights.get(pct) || 0);
+  }
+
+  const depthScore = clamp(weightedDepth * 100, 0, 100);
+  const spreadScore = spreadScoreFromBps(spreadBps, config.spreadGoodBps, config.spreadBadBps);
+  const score = Math.round(clamp(
+    (depthScore * config.depthWeight) + (spreadScore * config.spreadWeight),
+    0,
+    100
+  ));
+
+  return { score, depthScore, spreadScore, config };
 }
 function depthBySlippage(asks, bids, bestAsk, bestBid, pct){
   const buyMax = bestAsk * (1 + pct);
@@ -936,24 +1184,17 @@ async function fetchLiquiditySnapshot(token){
     const mid = hasTwoSided ? (bestAsk + bestBid) / 2 : NaN;
     const spreadBps = hasTwoSided && mid > 0 ? ((bestAsk - bestBid) / mid) * 10000 : NaN;
 
-    let buyDepthXah = 0;
-    let sellDepthXah = 0;
-    let depthBandPct = 2;
-    let tier1 = null;
-    let tier2 = null;
-    let tier5 = null;
+    const tierDepths = (Number.isFinite(mid) && mid > 0)
+      ? LIQUIDITY_TIER_PCTS.map((pct) => depthBySlippage(asks, bids, bestAsk, bestBid, pct))
+      : [];
+    const tier2 = getTierByPct(tierDepths, 0.02);
+    const tier5 = getTierByPct(tierDepths, 0.05);
+    const tier10 = getTierByPct(tierDepths, 0.10);
+    const tier20 = getTierByPct(tierDepths, 0.20);
 
-    if (Number.isFinite(mid) && mid > 0){
-      // Use executable depth from best prices to slippage thresholds.
-      tier1 = depthBySlippage(asks, bids, bestAsk, bestBid, 0.01);
-      tier2 = depthBySlippage(asks, bids, bestAsk, bestBid, 0.02);
-      tier5 = depthBySlippage(asks, bids, bestAsk, bestBid, 0.05);
-      buyDepthXah = tier2.buyDepthXah;
-      sellDepthXah = tier2.sellDepthXah;
-    }
-
-    const accessibleXah = hasTwoSided ? Math.min(buyDepthXah, sellDepthXah) : 0;
-    const score = buildLiquidityScore({ accessibleXah, spreadBps, hasTwoSided });
+    const accessibleXah = hasTwoSided ? Number(tier2?.accessibleXah || 0) : 0;
+    const buyDepthXah = Number(tier2?.buyDepthXah || 0);
+    const sellDepthXah = Number(tier2?.sellDepthXah || 0);
     const imbalanceRatio = (hasTwoSided && buyDepthXah > 0) ? (sellDepthXah / buyDepthXah) : NaN;
 
     return {
@@ -965,13 +1206,13 @@ async function fetchLiquiditySnapshot(token){
       spreadBps,
       buyDepthXah,
       sellDepthXah,
-      depthBandPct,
-      tier1,
+      tierDepths,
       tier2,
       tier5,
+      tier10,
+      tier20,
       imbalanceRatio,
       accessibleXah,
-      score,
       hasTwoSided
     };
   } finally {
@@ -1041,13 +1282,15 @@ async function fetchBitrueXahLiquiditySnapshot(){
     return { pct, buyDepthUsd, sellDepthUsd, buyDepthXah, sellDepthXah, accessibleUsd, accessibleXah };
   };
 
-  const tier1 = depthByPct(0.01);
-  const tier2 = depthByPct(0.02);
-  const tier5 = depthByPct(0.05);
+  const tierDepths = LIQUIDITY_TIER_PCTS.map((pct) => depthByPct(pct));
+  const tier2 = getTierByPct(tierDepths, 0.02);
+  const tier5 = getTierByPct(tierDepths, 0.05);
+  const tier10 = getTierByPct(tierDepths, 0.10);
+  const tier20 = getTierByPct(tierDepths, 0.20);
 
-  const accessibleXah = tier2.accessibleXah;
-  const score = buildLiquidityScore({ accessibleXah, spreadBps, hasTwoSided });
-  const imbalanceRatio = tier2.buyDepthUsd > 0 ? (tier2.sellDepthUsd / tier2.buyDepthUsd) : NaN;
+  const accessibleXah = Number(tier2?.accessibleXah || 0);
+  const accessibleUsd = Number(tier2?.accessibleUsd || 0);
+  const imbalanceRatio = Number(tier2?.buyDepthUsd) > 0 ? (tier2.sellDepthUsd / tier2.buyDepthUsd) : NaN;
 
   const lastPrice = Number(ticker?.lastPrice);
   const volume24hUsd = Number(ticker?.quoteVolume);
@@ -1061,13 +1304,14 @@ async function fetchBitrueXahLiquiditySnapshot(){
     spreadBps,
     lastPrice,
     volume24hUsd,
-    tier1,
+    tierDepths,
     tier2,
     tier5,
-    accessibleUsd: tier2.accessibleUsd,
+    tier10,
+    tier20,
+    accessibleUsd,
     accessibleXah,
     imbalanceRatio,
-    score,
     hasTwoSided
   };
 }
@@ -1082,27 +1326,45 @@ async function refreshLiquidityPanel(){
     liquidityBusy = false;
     return;
   }
+  const tokenLoadKey = String(token?.id || token?.symbol || "token");
+  const shouldShowLiquidityBar = !liquidityFirstLoadShownByToken.has(tokenLoadKey);
+  const liquidityTaskId = shouldShowLiquidityBar
+    ? beginLoadBarTask(`Loading ${token.symbol || "token"} book depth...`, 12)
+    : null;
+  if (shouldShowLiquidityBar){
+    liquidityFirstLoadShownByToken.add(tokenLoadKey);
+  }
 
   if (isNativeXahToken(token)){
-    if (liqNote){
-      liqNote.textContent = "CEX depth from Bitrue XAH/USDT, measured by slippage from best bid/ask.";
-    }
-
     try{
+      updateLoadBarTask(liquidityTaskId, { label: "Loading XAH/USDT depth from Bitrue...", target: 42 });
       const snap = await fetchBitrueXahLiquiditySnapshot();
       if (reqNonce !== liquidityReqNonce || token !== activeToken) return;
 
-      if (liqScoreEl) liqScoreEl.textContent = String(snap.score);
-      if (liqBar) liqBar.style.width = `${snap.score}%`;
+      updateLoadBarTask(liquidityTaskId, { label: "Scoring XAH liquidity...", target: 78 });
+      const scoreState = buildLiquidityScore({
+        token,
+        tierDepthsUsd: snap.tierDepths,
+        spreadBps: snap.spreadBps,
+        hasTwoSided: snap.hasTwoSided
+      });
+      if (liqScoreEl) liqScoreEl.textContent = String(scoreState.score);
+      if (liqBar) liqBar.style.width = `${scoreState.score}%`;
       if (liqMeta) liqMeta.textContent = `${snap.bidsCount} bids | ${snap.asksCount} asks | Bitrue XAH/USDT`;
 
       if (snap.hasTwoSided){
         if (liqSpreadEl) liqSpreadEl.textContent = `${snap.spreadBps.toFixed(1)} bps spread`;
+        const t2 = getTierByPct(snap.tierDepths, 0.02);
+        const t5 = getTierByPct(snap.tierDepths, 0.05);
+        const t10 = getTierByPct(snap.tierDepths, 0.10);
+        const t20 = getTierByPct(snap.tierDepths, 0.20);
         renderLiquidityMetrics([
-          { k: "Accessible USD (2% slip)", v: fmtUsd(snap.tier2.accessibleUsd) },
-          { k: "Book Imbalance (S/B)", v: Number.isFinite(snap.imbalanceRatio) ? `${snap.imbalanceRatio.toFixed(2)}x` : "-" },
-          { k: "Buy Depth (5% slip)", v: fmtUsd(snap.tier5.buyDepthUsd) },
-          { k: "Sell Depth (5% slip)", v: fmtUsd(snap.tier5.sellDepthUsd) }
+          { k: "Accessible USD (2% slip)", v: Number.isFinite(t2?.accessibleUsd) ? fmtUsd(t2.accessibleUsd) : "-" },
+          { k: "Accessible USD (5% slip)", v: Number.isFinite(t5?.accessibleUsd) ? fmtUsd(t5.accessibleUsd) : "-" },
+          { k: "Accessible USD (10% slip)", v: Number.isFinite(t10?.accessibleUsd) ? fmtUsd(t10.accessibleUsd) : "-" },
+          { k: "Accessible USD (20% slip)", v: Number.isFinite(t20?.accessibleUsd) ? fmtUsd(t20.accessibleUsd) : "-" },
+          { k: "Spread %", v: fmtSpreadPctFromBps(snap.spreadBps) },
+          { k: "Liquidity Profile", v: `${formatLiquidityProfileLabel(scoreState.config.profile)} (${scoreState.config.scale})` }
         ]);
         setHeroUsdPrice(fmtUsd(snap.mid));
       } else {
@@ -1111,48 +1373,56 @@ async function refreshLiquidityPanel(){
           { k: "Best Bid", v: Number.isFinite(snap.bestBid) ? fmtUsd(snap.bestBid) : "-" },
           { k: "Best Ask", v: Number.isFinite(snap.bestAsk) ? fmtUsd(snap.bestAsk) : "-" },
           { k: "24h Volume (USDT)", v: Number.isFinite(snap.volume24hUsd) ? fmtUsd(snap.volume24hUsd) : "-" },
-          { k: "Last Price", v: Number.isFinite(snap.lastPrice) ? fmtUsd(snap.lastPrice) : "-" }
+          { k: "Last Price", v: Number.isFinite(snap.lastPrice) ? fmtUsd(snap.lastPrice) : "-" },
+          { k: "Spread %", v: fmtSpreadPctFromBps(snap.spreadBps) },
+          { k: "Liquidity Profile", v: `${formatLiquidityProfileLabel(scoreState.config.profile)} (${scoreState.config.scale})` }
         ]);
         setHeroUsdPrice(Number.isFinite(snap.lastPrice) ? fmtUsd(snap.lastPrice) : "-");
       }
 
       if (liqNote){
-        const t1 = Number.isFinite(snap.tier1?.accessibleUsd) ? fmtUsd(snap.tier1.accessibleUsd) : "-";
-        const t2 = Number.isFinite(snap.tier2?.accessibleUsd) ? fmtUsd(snap.tier2.accessibleUsd) : "-";
-        const t5 = Number.isFinite(snap.tier5?.accessibleUsd) ? fmtUsd(snap.tier5.accessibleUsd) : "-";
-        liqNote.textContent = `Bitrue XAH/USDT depth. Accessible tiers: 1% ${t1} | 2% ${t2} | 5% ${t5}.`;
+        const tierText = LIQUIDITY_TIER_PCTS
+          .map((pct) => {
+            const tier = getTierByPct(snap.tierDepths, pct);
+            const v = Number.isFinite(tier?.accessibleUsd) ? fmtUsd(tier.accessibleUsd) : "-";
+            return `${fmtSlipPct(pct)} ${v}`;
+          })
+          .join(" | ");
+        liqNote.textContent = `Bitrue XAH/USDT depth tiers: ${tierText}. Target ${fmtUsd(scoreState.config.depthTargetUsd)} (${formatLiquidityProfileLabel(scoreState.config.profile)}, scale ${scoreState.config.scale}).`;
       }
+      hasLiquidityDataRendered = true;
     }catch{
       if (reqNonce !== liquidityReqNonce || token !== activeToken) return;
-      resetLiquidityPanel("bitrue unavailable");
-      if (liqMeta) liqMeta.textContent = "api error";
-      if (liqSpreadEl) liqSpreadEl.textContent = "XAH/USDT book unavailable";
-      if (liqNote) liqNote.textContent = "Bitrue API failed. Falling back to USD price only.";
+      if (!hasLiquidityDataRendered){
+        resetLiquidityPanel("bitrue unavailable");
+        if (liqMeta) liqMeta.textContent = "api error";
+        if (liqSpreadEl) liqSpreadEl.textContent = "XAH/USDT book unavailable";
+        if (liqNote) liqNote.textContent = "Bitrue API failed. Falling back to USD price only.";
+      } else {
+        if (liqMeta) liqMeta.textContent = "api error (showing last liquidity snapshot)";
+      }
       try{
         const xahUsd = await fetchXahUsdPrice();
         if (reqNonce === liquidityReqNonce && token === activeToken){
-          setHeroUsdPrice(fmtUsd(xahUsd));
+          if (!hasLiquidityDataRendered) setHeroUsdPrice(fmtUsd(xahUsd));
         }
       }catch{
         if (reqNonce === liquidityReqNonce && token === activeToken){
-          setHeroUsdPrice("-");
+          if (!hasLiquidityDataRendered) setHeroUsdPrice("-");
         }
       }
     } finally {
       liquidityBusy = false;
+      endLoadBarTask(liquidityTaskId, "Liquidity updated");
     }
     return;
   }
-  if (liqNote){
-    liqNote.textContent = "CLOB depth only (book_offers), measured from best bid/ask by slippage.";
-  }
 
   try{
+    updateLoadBarTask(liquidityTaskId, { label: `Loading ${token.symbol || "token"} order book depth...`, target: 42 });
     const snap = await fetchLiquiditySnapshot(token);
     if (reqNonce !== liquidityReqNonce || token !== activeToken) return;
 
-    if (liqScoreEl) liqScoreEl.textContent = String(snap.score);
-    if (liqBar) liqBar.style.width = `${snap.score}%`;
     if (liqMeta) liqMeta.textContent = `${snap.bidsCount} bids | ${snap.asksCount} asks`;
 
     let xahUsd = NaN;
@@ -1161,48 +1431,90 @@ async function refreshLiquidityPanel(){
     }catch{
       xahUsd = Number.isFinite(xahUsdCache.px) ? xahUsdCache.px : NaN;
     }
+    updateLoadBarTask(liquidityTaskId, { label: `Scoring ${token.symbol || "token"} liquidity...`, target: 78 });
     const toUsd = (xahAmt) => {
       const n = Number(xahAmt);
       return (Number.isFinite(n) && Number.isFinite(xahUsd) && xahUsd > 0) ? fmtUsd(n * xahUsd) : "-";
     };
+    const tierDepthsUsd = (Array.isArray(snap.tierDepths) ? snap.tierDepths : []).map((t) => {
+      const accessibleXah = Number(t?.accessibleXah);
+      const buyDepthXah = Number(t?.buyDepthXah);
+      const sellDepthXah = Number(t?.sellDepthXah);
+      const toN = (x) => (Number.isFinite(x) && Number.isFinite(xahUsd) && xahUsd > 0) ? (x * xahUsd) : NaN;
+      return {
+        pct: Number(t?.pct),
+        accessibleUsd: toN(accessibleXah),
+        buyDepthUsd: toN(buyDepthXah),
+        sellDepthUsd: toN(sellDepthXah),
+      };
+    });
+    const scoreState = buildLiquidityScore({
+      token,
+      tierDepthsUsd,
+      spreadBps: snap.spreadBps,
+      hasTwoSided: snap.hasTwoSided
+    });
+    if (liqScoreEl) liqScoreEl.textContent = String(scoreState.score);
+    if (liqBar) liqBar.style.width = `${scoreState.score}%`;
 
     if (snap.hasTwoSided){
       liqSpreadEl.textContent = `${snap.spreadBps.toFixed(1)} bps spread`;
+      const t2 = getTierByPct(snap.tierDepths, 0.02);
+      const t5 = getTierByPct(snap.tierDepths, 0.05);
+      const t10 = getTierByPct(snap.tierDepths, 0.10);
+      const t20 = getTierByPct(snap.tierDepths, 0.20);
       renderLiquidityMetrics([
-        { k: "Accessible USD (2% slip)", v: toUsd(snap.accessibleXah) },
-        { k: "Book Imbalance (S/B)", v: Number.isFinite(snap.imbalanceRatio) ? `${snap.imbalanceRatio.toFixed(2)}x` : "-" },
-        { k: "Buy Depth (5% slip)", v: toUsd(snap.tier5?.buyDepthXah || 0) },
-        { k: "Sell Depth (5% slip)", v: toUsd(snap.tier5?.sellDepthXah || 0) }
+        { k: "Accessible USD (2% slip)", v: toUsd(t2?.accessibleXah || 0) },
+        { k: "Accessible USD (5% slip)", v: toUsd(t5?.accessibleXah || 0) },
+        { k: "Accessible USD (10% slip)", v: toUsd(t10?.accessibleXah || 0) },
+        { k: "Accessible USD (20% slip)", v: toUsd(t20?.accessibleXah || 0) },
+        { k: "Spread %", v: fmtSpreadPctFromBps(snap.spreadBps) },
+        { k: "Liquidity Profile", v: `${formatLiquidityProfileLabel(scoreState.config.profile)} (${scoreState.config.scale})` }
       ]);
       if (liqNote){
-        liqNote.textContent = `CLOB depth only (book_offers). Depth tiers: 1% ${toUsd(snap.tier1?.accessibleXah || 0)} | 2% ${toUsd(snap.tier2?.accessibleXah || 0)} | 5% ${toUsd(snap.tier5?.accessibleXah || 0)} accessible.`;
+        const tierText = LIQUIDITY_TIER_PCTS
+          .map((pct) => `${fmtSlipPct(pct)} ${toUsd(getTierByPct(snap.tierDepths, pct)?.accessibleXah || 0)}`)
+          .join(" | ");
+        liqNote.textContent = `CLOB depth only (book_offers). Depth tiers: ${tierText}. Target ${fmtUsd(scoreState.config.depthTargetUsd)} (${formatLiquidityProfileLabel(scoreState.config.profile)}, scale ${scoreState.config.scale}).`;
       }
       if (reqNonce === liquidityReqNonce && token === activeToken){
         setHeroUsdPrice(Number.isFinite(xahUsd) && xahUsd > 0 ? fmtUsd(snap.mid * xahUsd) : "-");
       }
+      hasLiquidityDataRendered = true;
     } else {
       liqSpreadEl.textContent = "one-sided or empty book";
       renderLiquidityMetrics([
         { k: "Accessible USD (2% slip)", v: "$0" },
         { k: "Best Bid", v: Number.isFinite(snap.bestBid) ? toUsd(snap.bestBid) : "-" },
         { k: "Best Ask", v: Number.isFinite(snap.bestAsk) ? toUsd(snap.bestAsk) : "-" },
-        { k: "Book State", v: "needs both sides" }
+        { k: "Book State", v: "needs both sides" },
+        { k: "Spread %", v: fmtSpreadPctFromBps(snap.spreadBps) },
+        { k: "Liquidity Profile", v: `${formatLiquidityProfileLabel(scoreState.config.profile)} (${scoreState.config.scale})` }
       ]);
       setHeroUsdPrice("-");
+      hasLiquidityDataRendered = true;
     }
   }catch{
     if (reqNonce !== liquidityReqNonce || token !== activeToken) return;
-    resetLiquidityPanel("book depth unavailable");
-    if (liqMeta) liqMeta.textContent = "ws error";
-    setHeroUsdPrice("-");
+    if (!hasLiquidityDataRendered){
+      resetLiquidityPanel("book depth unavailable");
+      if (liqMeta) liqMeta.textContent = "ws error";
+      setHeroUsdPrice("-");
+    } else {
+      if (liqMeta) liqMeta.textContent = "ws error (showing last liquidity snapshot)";
+    }
   } finally {
     liquidityBusy = false;
+    endLoadBarTask(liquidityTaskId, "Liquidity updated");
   }
 }
 let loadBarTimer = null;
 let loadBarProgress = 0;
 let loadBarTarget = 0;
 const LOAD_BAR_TARGET_MAX = 98;
+const loadBarTasks = new Map();
+let loadBarTaskSeq = 0;
+let richListLoadTaskId = null;
 
 function stopLoadBarTimer(){
   if (!loadBarTimer) return;
@@ -1210,8 +1522,43 @@ function stopLoadBarTimer(){
   loadBarTimer = null;
 }
 
-function setLoadBarTarget(nextTarget){
+function getLoadBarTopTask(){
+  let top = null;
+  for (const task of loadBarTasks.values()){
+    if (!top || task.updatedAt > top.updatedAt){
+      top = task;
+    }
+  }
+  return top;
+}
+
+function syncLoadBarTargetFromTasks(){
+  if (!loadBarTasks.size){
+    loadBarTarget = 0;
+    return;
+  }
+  let maxTarget = 6;
+  for (const task of loadBarTasks.values()){
+    maxTarget = Math.max(maxTarget, Number(task.target) || 0);
+  }
+  loadBarTarget = Math.max(0, Math.min(LOAD_BAR_TARGET_MAX, maxTarget));
+}
+
+function setLoadBarTextValue(text){
+  if (!loadBarText) return;
+  loadBarText.textContent = text || "Loading...";
+}
+
+function setLoadBarTarget(nextTarget, taskId = null){
   const clamped = Math.max(0, Math.min(LOAD_BAR_TARGET_MAX, Number(nextTarget) || 0));
+  if (taskId && loadBarTasks.has(taskId)){
+    const task = loadBarTasks.get(taskId);
+    task.target = Math.max(Number(task.target) || 0, clamped);
+    task.updatedAt = Date.now();
+    loadBarTasks.set(taskId, task);
+    syncLoadBarTargetFromTasks();
+    return;
+  }
   loadBarTarget = Math.max(loadBarTarget, clamped);
 }
 
@@ -1236,6 +1583,72 @@ function startLoadBarTimer(){
   }, 120);
 }
 
+function beginLoadBarTask(label, target = 8){
+  const id = `task_${++loadBarTaskSeq}`;
+  const task = {
+    id,
+    label: String(label || "Loading..."),
+    target: Math.max(0, Math.min(LOAD_BAR_TARGET_MAX, Number(target) || 8)),
+    updatedAt: Date.now()
+  };
+  loadBarTasks.set(id, task);
+  syncLoadBarTargetFromTasks();
+  if (loadBarWrap){
+    loadBarWrap.classList.add("active");
+    loadBarWrap.setAttribute("aria-hidden", "false");
+  }
+  if (!loadBarTimer){
+    startLoadBarTimer();
+  }
+  setLoadBarTextValue(task.label);
+  return id;
+}
+
+function updateLoadBarTask(id, { label, target } = {}){
+  if (!id || !loadBarTasks.has(id)) return;
+  const task = loadBarTasks.get(id);
+  if (label != null) task.label = String(label);
+  if (target != null){
+    const clamped = Math.max(0, Math.min(LOAD_BAR_TARGET_MAX, Number(target) || 0));
+    task.target = Math.max(Number(task.target) || 0, clamped);
+  }
+  task.updatedAt = Date.now();
+  loadBarTasks.set(id, task);
+  syncLoadBarTargetFromTasks();
+  const top = getLoadBarTopTask();
+  if (top) setLoadBarTextValue(top.label);
+}
+
+function endLoadBarTask(id, doneLabel = ""){
+  if (!id) return;
+  const existed = loadBarTasks.delete(id);
+  if (!existed) return;
+
+  if (loadBarTasks.size){
+    syncLoadBarTargetFromTasks();
+    const top = getLoadBarTopTask();
+    if (top) setLoadBarTextValue(top.label);
+    return;
+  }
+
+  stopLoadBarTimer();
+  loadBarTarget = 100;
+  if (loadBar) loadBar.style.width = "100%";
+  if (doneLabel){
+    setLoadBarTextValue(doneLabel);
+  }
+
+  setTimeout(() => {
+    if (loadBarTasks.size) return;
+    if (loadBarWrap){
+      loadBarWrap.classList.remove("active");
+      loadBarWrap.setAttribute("aria-hidden", "true");
+    }
+    if (loadBar) loadBar.style.width = "0%";
+    setLoadBarTextValue("Loading...");
+  }, 280);
+}
+
 function cancelRichListLoadUI(){
   richListLoadNonce += 1;
   setRichListLoading(false);
@@ -1245,28 +1658,17 @@ function setRichListLoading(isLoading){
     xahLoadRichlistBtn.disabled = Boolean(isLoading);
     xahLoadRichlistBtn.textContent = isLoading ? "Loading XAH Rich List..." : "Load XAH Rich List";
   }
-  if (!loadBarWrap) return;
   if (isLoading){
-    loadBarWrap.classList.add("active");
-    loadBarWrap.setAttribute("aria-hidden", "false");
-    startLoadBarTimer();
-    if (loadBarText){
-      loadBarText.textContent = `Loading ${activeToken?.symbol || "token"} rich list...`;
+    if (!richListLoadTaskId){
+      richListLoadTaskId = beginLoadBarTask(`Loading ${activeToken?.symbol || "token"} rich list...`, 10);
+    } else {
+      updateLoadBarTask(richListLoadTaskId, { label: `Loading ${activeToken?.symbol || "token"} rich list...`, target: 10 });
     }
     return;
   }
 
-  stopLoadBarTimer();
-  loadBarTarget = 100;
-  if (loadBar) loadBar.style.width = "100%";
-  if (loadBarText) loadBarText.textContent = "Rich list loaded";
-
-  setTimeout(() => {
-    loadBarWrap.classList.remove("active");
-    loadBarWrap.setAttribute("aria-hidden", "true");
-    if (loadBar) loadBar.style.width = "0%";
-    if (loadBarText) loadBarText.textContent = "Loading rich list...";
-  }, 280);
+  endLoadBarTask(richListLoadTaskId, "Rich list loaded");
+  richListLoadTaskId = null;
 }
 function el(tag, cls, text){
   const n = document.createElement(tag);
@@ -1424,6 +1826,45 @@ function renderTable(){
   }
 }
 
+function renderTreasuryWallets(){
+  if (!treasuryPane || !treasuryList || !treasuryMeta){
+    return;
+  }
+
+  const wallets = getExcludedWallets(activeToken);
+  treasuryList.innerHTML = "";
+
+  if (!wallets.length){
+    treasuryPane.style.display = "none";
+    treasuryMeta.textContent = "";
+    return;
+  }
+
+  treasuryPane.style.display = "block";
+  treasuryMeta.textContent = `${wallets.length} ignored wallet${wallets.length === 1 ? "" : "s"}`;
+
+  for (const wallet of wallets){
+    const item = el("div", "treasuryItem");
+    const code = el("code", null, displayAddr(wallet.address));
+    code.title = wallet.address;
+
+    const typeClass = wallet.kind === "Treasury" ? "treasuryType treasuryTypeGold" : "treasuryType";
+    const type = el("span", typeClass, wallet.kind);
+
+    const link = document.createElement("a");
+    link.className = "copy";
+    link.textContent = "Explorer";
+    link.href = buildAccountExplorerUrl(wallet.address);
+    link.target = "_blank";
+    link.rel = "noreferrer";
+
+    item.appendChild(code);
+    item.appendChild(type);
+    item.appendChild(link);
+    treasuryList.appendChild(item);
+  }
+}
+
 /* ===== Stats + Experiment panels ===== */
 function computeTopN(holders, n){
   const top = holders.slice(0, n);
@@ -1444,7 +1885,7 @@ function computeStats(){
 
   // Whale dominance
   whaleRow.innerHTML = "";
-  const ns = (activeToken.whaleTopN || [1,3,5,10]).filter(x => x > 0);
+  const ns = (activeToken.whaleTopN || [1,3,5,10,25,50]).filter(x => x > 0);
   for (const n of ns){
     const m = el("div","metric");
     m.appendChild(el("div","k",`Top ${n}`));
@@ -1688,11 +2129,11 @@ async function loadHolders({ forceNetwork = false } = {}){
   if (isNativeXahToken(tokenAtRequest)){
     xahApproxStatsMode = false;
     const ttlMs = getRichlistCacheTtlMs(tokenAtRequest);
-    const cached = forceNetwork ? null : readRichlistCache(tokenAtRequest);
+    const cached = readRichlistCache(tokenAtRequest);
     const now = Date.now();
     const hasCached = Boolean(cached?.holders?.length);
     const cachedAgeMs = cached ? Math.max(0, now - cached.ts) : 0;
-    const cacheFresh = cached && cachedAgeMs <= ttlMs;
+    const cacheFresh = !forceNetwork && cached && cachedAgeMs <= ttlMs;
 
     if (hasCached){
       allHolders = normalizeHolders(cached.holders);
@@ -1722,11 +2163,11 @@ async function loadHolders({ forceNetwork = false } = {}){
       const fullSupply = Number.isFinite(info.fullSupply) && info.fullSupply > 0 ? info.fullSupply : NaN;
       if (Number.isFinite(circulating) && Number.isFinite(fullSupply)){
         tokenAtRequest.totalSupply = fullSupply;
-        statSupply.textContent = fmt(fullSupply);
+  statSupply.textContent = fmtSupplyStat(activeToken, fullSupply);
         if (supplyMeta) supplyMeta.textContent = `${fmt(circulating)} / ${fmt(fullSupply)} circulating`;
       } else if (Number.isFinite(circulating)){
         tokenAtRequest.totalSupply = circulating;
-        statSupply.textContent = fmt(circulating);
+        statSupply.textContent = fmtSupplyStat(activeToken, circulating);
       }
       if (Number.isFinite(info.accounts) && onePercentCountEl){
         onePercentCountEl.textContent = String(Math.floor(info.accounts));
@@ -1759,7 +2200,11 @@ async function loadHolders({ forceNetwork = false } = {}){
         onProgress: ({ page, count, hasMore }) => {
           if (isStale()) return;
           const pageBasedPct = 14 + (1 - Math.exp(-page * 0.065)) * 82;
-          setLoadBarTarget(hasMore ? pageBasedPct : 96);
+          setLoadBarTarget(hasMore ? pageBasedPct : 96, richListLoadTaskId);
+          updateLoadBarTask(richListLoadTaskId, {
+            label: `Loading ${tokenAtRequest.symbol} rich list... page ${page} (${count} accounts)`,
+            target: hasMore ? pageBasedPct : 96
+          });
           setStatus(true, `scanning wallets: ${page} pages | ${count} accounts`);
         },
       });
@@ -1786,11 +2231,11 @@ async function loadHolders({ forceNetwork = false } = {}){
   }
 
   const ttlMs = getRichlistCacheTtlMs(tokenAtRequest);
-  const cached = forceNetwork ? null : readRichlistCache(tokenAtRequest);
+  const cached = readRichlistCache(tokenAtRequest);
   const now = Date.now();
   const hasCached = Boolean(cached?.holders?.length);
   const cachedAgeMs = cached ? Math.max(0, now - cached.ts) : 0;
-  const cacheFresh = cached && cachedAgeMs <= ttlMs;
+  const cacheFresh = !forceNetwork && cached && cachedAgeMs <= ttlMs;
 
   if (hasCached){
     allHolders = normalizeHolders(cached.holders);
@@ -1822,7 +2267,11 @@ async function loadHolders({ forceNetwork = false } = {}){
       onProgress: ({ page, hasMore }) => {
         if (isStale()) return;
         const pageBasedPct = 18 + (1 - Math.exp(-page * 0.38)) * 70;
-        setLoadBarTarget(hasMore ? pageBasedPct : 96);
+        setLoadBarTarget(hasMore ? pageBasedPct : 96, richListLoadTaskId);
+        updateLoadBarTask(richListLoadTaskId, {
+          label: `Loading ${tokenAtRequest.symbol} rich list... page ${page}`,
+          target: hasMore ? pageBasedPct : 96
+        });
       },
     });
 
@@ -2132,60 +2581,69 @@ function setRichlistIdleMessage(msg){
 
 async function primeXahSupplyFromApi({ refreshApprox = true } = {}){
   if (!isNativeXahToken(activeToken)) return;
+  const supplyTaskId = beginLoadBarTask("Loading XAH supply snapshot...", 16);
+  let supplyDoneLabel = "";
 
-  let info = null;
   try{
-    info = await fetchXahSupplyInfo();
-  }catch{
-    info = null;
-  }
-  if (!isNativeXahToken(activeToken)) return;
-
-  const circulating = Number.isFinite(Number(info?.circulating)) && Number(info.circulating) > 0
-    ? Number(info.circulating)
-    : (Number.isFinite(xahSupplySnapshot.circulating) && xahSupplySnapshot.circulating > 0
-      ? xahSupplySnapshot.circulating
-      : XAH_FALLBACK_SNAPSHOT.circulating);
-
-  const fullSupply = Number.isFinite(Number(info?.fullSupply)) && Number(info.fullSupply) > 0
-    ? Number(info.fullSupply)
-    : (Number.isFinite(xahSupplySnapshot.fullSupply) && xahSupplySnapshot.fullSupply > 0
-      ? xahSupplySnapshot.fullSupply
-      : XAH_FALLBACK_SNAPSHOT.fullSupply);
-
-  const accounts = Number.isFinite(Number(info?.accounts)) && Number(info.accounts) > 0
-    ? Math.floor(Number(info.accounts))
-    : (Number.isFinite(xahSupplySnapshot.accounts) && xahSupplySnapshot.accounts > 0
-      ? Math.floor(xahSupplySnapshot.accounts)
-      : XAH_FALLBACK_SNAPSHOT.accounts);
-
-  xahSupplySnapshot = { circulating, fullSupply, accounts, ts: Date.now() };
-
-  activeToken.totalSupply = fullSupply;
-  statSupply.textContent = fmt(fullSupply);
-  if (supplyMeta) supplyMeta.textContent = `${fmt(circulating)} / ${fmt(fullSupply)} circulating`;
-  if (Number.isFinite(accounts) && onePercentCountEl){
-    onePercentCountEl.textContent = String(accounts);
-  }
-
-  if (refreshApprox){
-    const tpl = readXahTemplateCache();
-    const approx = buildXahApproxHolders({
-      circulating,
-      accounts,
-      topHolders: Array.isArray(tpl?.topHolders) ? tpl.topHolders : []
-    });
-
-    if (approx.length){
-      allHolders = normalizeHolders(approx);
-      if (allHolders.length) allHolders[allHolders.length - 1].isLast = true;
-      xahApproxStatsMode = true;
-      computeStats();
-      setStatus(true, info ? `approx stats loaded (${allHolders.length} model wallets)` : `fallback approx loaded (${allHolders.length} model wallets)`);
+    let info = null;
+    try{
+      updateLoadBarTask(supplyTaskId, { label: "Fetching XAH supply and wallet counts...", target: 46 });
+      info = await fetchXahSupplyInfo();
+    }catch{
+      info = null;
     }
-  }
+    if (!isNativeXahToken(activeToken)) return;
 
-  setPills();
+    const circulating = Number.isFinite(Number(info?.circulating)) && Number(info.circulating) > 0
+      ? Number(info.circulating)
+      : (Number.isFinite(xahSupplySnapshot.circulating) && xahSupplySnapshot.circulating > 0
+        ? xahSupplySnapshot.circulating
+        : XAH_FALLBACK_SNAPSHOT.circulating);
+
+    const fullSupply = Number.isFinite(Number(info?.fullSupply)) && Number(info.fullSupply) > 0
+      ? Number(info.fullSupply)
+      : (Number.isFinite(xahSupplySnapshot.fullSupply) && xahSupplySnapshot.fullSupply > 0
+        ? xahSupplySnapshot.fullSupply
+        : XAH_FALLBACK_SNAPSHOT.fullSupply);
+
+    const accounts = Number.isFinite(Number(info?.accounts)) && Number(info.accounts) > 0
+      ? Math.floor(Number(info.accounts))
+      : (Number.isFinite(xahSupplySnapshot.accounts) && xahSupplySnapshot.accounts > 0
+        ? Math.floor(xahSupplySnapshot.accounts)
+        : XAH_FALLBACK_SNAPSHOT.accounts);
+
+    xahSupplySnapshot = { circulating, fullSupply, accounts, ts: Date.now() };
+
+    activeToken.totalSupply = fullSupply;
+  statSupply.textContent = fmtSupplyStat(activeToken, fullSupply);
+    if (supplyMeta) supplyMeta.textContent = `${fmt(circulating)} / ${fmt(fullSupply)} circulating`;
+    if (Number.isFinite(accounts) && onePercentCountEl){
+      onePercentCountEl.textContent = String(accounts);
+    }
+
+    if (refreshApprox){
+      updateLoadBarTask(supplyTaskId, { label: "Building XAH approximate distribution...", target: 74 });
+      const tpl = readXahTemplateCache();
+      const approx = buildXahApproxHolders({
+        circulating,
+        accounts,
+        topHolders: Array.isArray(tpl?.topHolders) ? tpl.topHolders : []
+      });
+
+      if (approx.length){
+        allHolders = normalizeHolders(approx);
+        if (allHolders.length) allHolders[allHolders.length - 1].isLast = true;
+        xahApproxStatsMode = true;
+        computeStats();
+        setStatus(true, info ? `approx stats loaded (${allHolders.length} model wallets)` : `fallback approx loaded (${allHolders.length} model wallets)`);
+      }
+    }
+
+    setPills();
+    supplyDoneLabel = "XAH snapshot updated";
+  } finally {
+    endLoadBarTask(supplyTaskId, supplyDoneLabel);
+  }
 }
 
 async function ensureRichlistLoadedForActiveToken({ forceNetwork = false, reason = "manual" } = {}){
@@ -2216,6 +2674,7 @@ function wireRichlistLazyLoad(){
       if (!isNativeXahToken(activeToken)) return;
       setStatus(true, "updating XAH stats...");
       await primeXahSupplyFromApi({ refreshApprox: true });
+      await ensureRichlistLoadedForActiveToken({ forceNetwork: true, reason: "xah-stats-update" });
       refreshLiquidityPanel();
       loadDexChartHistory();
     });
@@ -2223,16 +2682,24 @@ function wireRichlistLazyLoad(){
 }
 function applyTokenToUI(){
   if (!activeToken) return;
+  setEmojiFieldForToken(activeToken);
 
   document.title = `Onyx Hub — ${activeToken?.symbol || activeToken?.name || "100"}`;
-  setTokenLogo(brandEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
+  setBrandLogo();
   setTokenLogo(heroEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
   setTokenLogo(statEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
   setTokenLogo(panelEmojiDecent, activeToken, activeToken.logo || "\u{1F5A4}");
   setTokenLogo(panelEmojiFeed, activeToken, activeToken.logo || "\u{1F5A4}");
   setTokenLogo(panelEmojiRich, activeToken, activeToken.logo || "\u{1F5A4}");
 
+  const isOneToken = String(activeToken?.id) === "100";
   heroName.textContent = activeToken.name || activeToken.id;
+  if (isOneToken){
+    const soon = document.createElement("span");
+    soon.className = "heroSoon";
+    soon.textContent = "coming soon!";
+    heroName.appendChild(soon);
+  }
 
 
 
@@ -2254,16 +2721,25 @@ function applyTokenToUI(){
     }
   }
 
-  statSupply.textContent = String(activeToken.totalSupply);
+  statSupply.textContent = fmtSupplyStat(activeToken, activeToken.totalSupply);
   if (statClubLabelEl){
     statClubLabelEl.textContent = isNativeXahToken(activeToken) ? "Wallet Count" : "1% Club";
   }
 
-  btnExplorer.href = activeToken.explorerUrl || "#";
+  btnExplorer.href = "#";
+  btnExplorer.removeAttribute("target");
+  btnExplorer.removeAttribute("rel");
+  btnExplorer.innerHTML = '<span class="dot"></span> ONE';
   btnTokenDetails.href = activeToken.explorerUrl || "#";
   btnTrustline.href = buildTrustlineUrl(activeToken) || "#";
   btnTrade.href = buildTradeUrl(activeToken) || "#";
-  btnX.href = activeToken.xUrl || "#";
+  if (btnXahImport){
+    btnXahImport.href = activeToken.xahImportUrl || "https://xumm.app/detect/xapp:nixer.xahauimport";
+  }
+  if (btnXahTeleport){
+    btnXahTeleport.href = activeToken.xahTeleportUrl || "https://xumm.app/detect/xapp:xahau.teleport";
+  }
+  btnX.href = ONE_TOKEN?.xUrl || activeToken.xUrl || "#";
   footExplorer.href = activeToken.explorerUrl || "#";
   footX.href = activeToken.xUrl || "#";
   footExplorer.textContent = "xahauexplorer";
@@ -2272,6 +2748,15 @@ function applyTokenToUI(){
   const nativeXah = isNativeXahToken(activeToken);
   btnTrustline.style.display = nativeXah ? "none" : "inline-flex";
   btnTrade.style.display = nativeXah ? "none" : "inline-flex";
+  if (btnXahImport){
+    btnXahImport.style.display = nativeXah ? "inline-flex" : "none";
+  }
+  if (btnXahTeleport){
+    btnXahTeleport.style.display = nativeXah ? "inline-flex" : "none";
+  }
+  if (xahToolsRow){
+    xahToolsRow.style.display = nativeXah ? "grid" : "none";
+  }
   if (feedPanel){
     feedPanel.style.display = nativeXah ? "none" : "";
   }
@@ -2291,7 +2776,12 @@ function applyTokenToUI(){
     renderedHoldersTokenId = null;
     setRichlistIdleMessage("XAH rich list is on-demand. Click Load XAH Rich List to fetch wallet balances.");
     primeXahSupplyFromApi({ refreshApprox: true });
+    refreshXahHeroExtraStats();
+  } else {
+    setXahHeroExtraStatsVisible(false);
   }
+
+  renderTreasuryWallets();
 
   if (whitepaperSummary){
     whitepaperSummary.textContent = activeToken.whitepaper || "White paper text coming soon.";
@@ -2306,6 +2796,7 @@ function applyTokenToUI(){
   }
 
   setPills();
+  hasLiquidityDataRendered = false;
   resetLiquidityPanel("loading book depth...");
   setHeroUsdPrice("loading...");
   setDexChartPairLabel(activeToken);
@@ -2337,6 +2828,17 @@ function initTokenSelector(){
     startFeed();
     refreshLiquidityPanel();
     startLiquidityPolling();
+  });
+}
+
+function wireHeaderOneShortcut(){
+  if (!btnExplorer) return;
+  btnExplorer.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    if (!ONE_TOKEN || !tokenSelect) return;
+    if (String(activeToken?.id) === String(ONE_TOKEN.id)) return;
+    tokenSelect.value = ONE_TOKEN.id;
+    tokenSelect.dispatchEvent(new Event("change"));
   });
 }
 
@@ -2412,8 +2914,10 @@ if (dexRange1y){
     console.error("No tokens found in tokens.js (window.ONYX_TOKENS).");
     return;
   }
-  activeToken = TOKENS[0];
+  const defaultTokenId = String(window.ONYX_DEFAULT_TOKEN_ID || "").trim();
+  activeToken = TOKENS.find((t) => String(t.id) === defaultTokenId) || TOKENS[0];
   initTokenSelector();
+  wireHeaderOneShortcut();
   tokenSelect.value = activeToken.id;
 
   applyTokenToUI();
@@ -2425,3 +2929,5 @@ if (dexRange1y){
   refreshLiquidityPanel();
   startLiquidityPolling();
 })();
+
+

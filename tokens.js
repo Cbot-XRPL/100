@@ -1,3 +1,5 @@
+window.ONYX_DEFAULT_TOKEN_ID = "xah";
+
 window.ONYX_TOKENS = [
   {
     id: "xah",
@@ -10,18 +12,29 @@ window.ONYX_TOKENS = [
     renderLimit: 100,
     cacheTtlSec: 1800,
     excludeIssuer: false,
-    excludedAddresses: [],
+    excludedAddresses: [
+      "rBiGVAULtVEc2yMnop587w5pgiZ7EWAyUj",
+      "rLockEDUP1tGp3cEfajBZ9R4hCg346Bsp6",
+      "rK2y8aaRdEFpr2GUrqs1iuTCUsWgS5mHHW"
+    ],
+    logoUrl: "https://raw.githubusercontent.com/Xahau/Graphics/main/xahau-icon-yellow.svg",
+    logoRounded: false,
     logo: "XAH",
     theme: "xahau",
+    liquidityProfile: "commercial", // options: commercial | alt
+    liquidityScoreScale: "A", // options: A (balanced) | B (depth-first)
+    liquidityDepthTargetUsd: 10000,
     ws: "wss://xahau.network",
     explorerUrl: "https://xahauexplorer.com",
     xUrl: "https://x.com/XahauNetwork",
+    xahImportUrl: "https://xumm.app/detect/xapp:nixer.xahauimport",
+    xahTeleportUrl: "https://xumm.app/detect/xapp:xahau.teleport",
     whitepaper: "XAH is the native asset of the Xahau network. This view tracks USD pricing and market context.",
     whitepaperHtml: "",
     description:
       "Native network asset on Xahau, priced directly in USD for this dashboard.",
     badgeRules: [],
-    whaleTopN: [1, 3, 5, 10],
+    whaleTopN: [1, 3, 5, 10, 25, 50],
   },
   {
     id: "100",
@@ -38,6 +51,9 @@ window.ONYX_TOKENS = [
     excludedAddresses: [],
     logo: "100",
     theme: "genesis",
+    liquidityProfile: "alt",
+    liquidityScoreScale: "A",
+    liquidityDepthTargetUsd: 500,
     ws: "wss://xahau.network",
     explorerUrl: "https://xahauexplorer.com/en/token/roneGNc3hdSwWZEr54RZceQr8Fftq6fkL/ONE",
     xUrl: "https://x.com/One_Xahau",
@@ -56,7 +72,7 @@ window.ONYX_TOKENS = [
       { id: "dex", title: "DEX Culture", icon: "\u{1F535}", className: "education", type: "any", rule: "Hold any amount (> 0)" },
       { id: "exact1", title: "Exact One", icon: "\u{1F3AF}", className: "club", type: "exact", value: 1, epsilon: 0.000000001, rule: "Hold exactly 1.0000" },
     ],
-    whaleTopN: [1, 3, 5, 10],
+    whaleTopN: [1, 3, 5, 10, 25, 50],
   },
   {
     id: "evr",
@@ -70,6 +86,9 @@ window.ONYX_TOKENS = [
     excludedAddresses: ["rHktfGUbjqzU4GsYCMc1pDjdHXb5CJamto","ra9g3LAJm9xJu8Awe7oWzR6VXFB1mpFtSe","rmv53yu8Wid6kj6AC6NvmiwSXNxRa8vTH"],
     logo: "EVR",
     theme: "evernode",
+    liquidityProfile: "alt",
+    liquidityScoreScale: "A",
+    liquidityDepthTargetUsd: 500,
     ws: "wss://xahau.network",
     explorerUrl: "https://xahauexplorer.com/en/token/rEvernodee8dJLaFsujS6q1EiXvZYmHXr8/EVR",
     xUrl: "https://x.com/EvernodeXRPL",
@@ -88,7 +107,7 @@ window.ONYX_TOKENS = [
       { id: "dex", title: "DEX Culture", icon: "\u{1F535}", className: "education", type: "any", rule: "Hold any amount (> 0)" },
       { id: "exact1", title: "Exact One", icon: "\u{1F3AF}", className: "club", type: "exact", value: 1, epsilon: 0.000000001, rule: "Hold exactly 1.0000" },
     ],
-    whaleTopN: [1, 3, 5, 10],
+    whaleTopN: [1, 3, 5, 10, 25, 50],
   },
   {
     id: "xmerch",
@@ -103,6 +122,9 @@ window.ONYX_TOKENS = [
     excludedAddresses: [],
     logo: "XM",
     theme: "xmerch",
+    liquidityProfile: "alt",
+    liquidityScoreScale: "A",
+    liquidityDepthTargetUsd: 500,
     ws: "wss://xahau.network",
     explorerUrl: "https://xahauexplorer.com/en/token/rLRVSaK575YXwwnkC5QSTLK7E1r1ps5TCs/584D455243480000000000000000000000000000",
     xUrl: "https://x.com/xMerch_",
@@ -121,8 +143,9 @@ window.ONYX_TOKENS = [
       { id: "dex", title: "DEX Culture", icon: "\u{1F535}", className: "education", type: "any", rule: "Hold any amount (> 0)" },
       { id: "exact1", title: "Exact One", icon: "\u{1F3AF}", className: "club", type: "exact", value: 1, epsilon: 0.000000001, rule: "Hold exactly 1.0000" },
     ],
-    whaleTopN: [1, 3, 5, 10],
+    whaleTopN: [1, 3, 5, 10, 25, 50],
   },
 ];
+
 
 

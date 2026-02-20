@@ -71,6 +71,17 @@
             <a class="btn ctaFocus" id="btnTrustline" href="#" target="_blank" rel="noreferrer">Add Trustline</a>
             <a class="btn ctaFocus" id="btnTrade" href="#" target="_blank" rel="noreferrer">Trade on XMagnetic</a>
           </div>
+
+          <div class="xahToolsRow" id="xahToolsRow" style="display:none">
+            <div class="xahToolCard" id="xahImportCard">
+              <a class="btn ctaFocus" id="btnXahImport" href="#" target="_blank" rel="noreferrer">Xahau Import</a>
+              <div class="xahToolSub" id="xahImportSub">Get 2 free XAH and import your existing XRPL account to Xahau with Xumm.</div>
+            </div>
+            <div class="xahToolCard" id="xahTeleportCard">
+              <a class="btn ctaFocus" id="btnXahTeleport" href="#" target="_blank" rel="noreferrer">XAH Teleport</a>
+              <div class="xahToolSub" id="xahTeleportSub">Converts XAH (GateHub's IOU on the XRP Ledger) to XAH on the Xahau network (the native asset) and vice versa.</div>
+            </div>
+          </div>
         </div>
 
         <aside class="cardRight" aria-label="Key stats">
@@ -92,6 +103,14 @@
               <div class="stat">
                 <div class="k">Price (USD)</div>
                 <div class="v smallv"><span id="statPriceUsd">—</span></div>
+              </div>
+              <div class="stat" id="statLedgerCard" style="display:none">
+                <div class="k">Ledger Index</div>
+                <div class="v smallv"><span id="statLedgerIndex">—</span></div>
+              </div>
+              <div class="stat" id="statVersionCard" style="display:none">
+                <div class="k">Node Version</div>
+                <div class="v smallv"><span id="statNodeVersion">—</span></div>
               </div>
             </div>
           </div>
@@ -119,12 +138,12 @@
     <section class="grid2" aria-label="Analytics panels">
       <div class="panel">
         <div class="panelHead">
-          <h2>Whale Dominance</h2>
-          <div class="meta"><span id="whaleMeta">—</span> <button class="chip" id="xahStatsUpdateBtn" type="button" style="display:none;padding:4px 8px;font-size:11px;line-height:1">Update</button></div>
+          <h2>Supply Breakdown</h2>
+          <div class="meta"><span id="supplyMeta">—</span></div>
         </div>
         <div class="panelBody">
-          <div class="metricRow" id="whaleRow"></div>
-          <div class="miniNote">Top wallets concentration (by % of supply).</div>
+          <div class="bucketList" id="bucketList"></div>
+          <div class="miniNote">Compares circulating supply vs large whale holders vs small holders.</div>
         </div>
       </div>
 
@@ -165,15 +184,14 @@
 
       <div class="panel">
         <div class="panelHead">
-          <h2>Supply Breakdown</h2>
-          <div class="meta"><span id="supplyMeta">—</span></div>
+          <h2>Whale Dominance</h2>
+          <div class="meta"><span id="whaleMeta">—</span> <button class="chip" id="xahStatsUpdateBtn" type="button" style="display:none;padding:4px 8px;font-size:11px;line-height:1">Update</button></div>
         </div>
         <div class="panelBody">
-          <div class="bucketList" id="bucketList"></div>
-          <div class="miniNote">Compares circulating supply vs large whale holders vs small holders.</div>
+          <div class="metricRow" id="whaleRow"></div>
+          <div class="miniNote">Top wallets concentration (by % of supply).</div>
         </div>
       </div>
-
       <div class="panel">
         <div class="panelHead">
           <h2>Challenges & Badges</h2>
@@ -251,6 +269,14 @@
       </div>
 
       <div class="panelBody">
+        <div class="treasuryPane" id="treasuryPane" style="display:none" aria-label="Project treasury wallets">
+          <div class="treasuryHead">
+            <h3>Project Treasury Wallets</h3>
+            <span class="meta" id="treasuryMeta"></span>
+          </div>
+          <div class="treasuryList" id="treasuryList"></div>
+        </div>
+
         <div class="controls">
           <div class="search">
             <input id="search" type="search" placeholder="Search address (r...)" autocomplete="off" aria-label="Search address" />
