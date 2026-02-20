@@ -1,4 +1,4 @@
-﻿/******************************************************************
+/******************************************************************
  * ONYX HUB - Multi-token (no backend)
  * - Rich list: account_lines (issuer) via WebSocket
  * - Live feed: subscribe stream via WebSocket
@@ -39,6 +39,7 @@ const panelEmojiRich = document.getElementById("panelEmojiRich");
 const whitepaperMeta = document.getElementById("whitepaperMeta");
 const whitepaperSummary = document.getElementById("whitepaperSummary");
 const btnWhitepaper = document.getElementById("btnWhitepaper");
+const btnTokenExplorer = document.getElementById("btnTokenExplorer");
 
 const btnExplorer = document.getElementById("btnExplorer");
 const btnTokenDetails = document.getElementById("btnTokenDetails");
@@ -2828,7 +2829,7 @@ function applyTokenToUI(){
   btnExplorer.removeAttribute("target");
   btnExplorer.removeAttribute("rel");
   btnExplorer.innerHTML = '<span class="dot"></span> ONE';
-  btnTokenDetails.href = activeToken.explorerUrl || "#";
+  btnTokenDetails.href = "#whitepaperPanel";
   btnTrustline.href = buildTrustlineUrl(activeToken) || "#";
   btnTrade.href = buildTradeUrl(activeToken) || "#";
   if (btnXahImport){
@@ -2893,6 +2894,11 @@ function applyTokenToUI(){
   if (whitepaperMeta){
     whitepaperMeta.textContent = (activeToken.whitepaper || activeToken.whitepaperHtml) ? "live" : "pending";
   }
+  if (btnTokenExplorer){
+    const hasExplorer = Boolean(activeToken.explorerUrl);
+    btnTokenExplorer.href = hasExplorer ? activeToken.explorerUrl : "#";
+    btnTokenExplorer.style.display = hasExplorer ? "inline-flex" : "none";
+  }
   if (btnWhitepaper){
     const hasRemoteWhitepaper = Boolean(activeToken.whitepaperHtml);
     btnWhitepaper.href = hasRemoteWhitepaper ? activeToken.whitepaperHtml : "#";
@@ -2955,8 +2961,8 @@ function syncHeroStatsPlacement(){
   if (!heroGrid || !heroMainCol || !cardRight || !ctaRow) return;
   const isMobile = window.matchMedia("(max-width: 768px)").matches;
   if (isMobile){
-    if (cardRight.parentElement !== heroMainCol){
-      heroMainCol.insertBefore(cardRight, ctaRow);
+    if (cardRight.parentElement !== heroGrid){
+      heroGrid.appendChild(cardRight);
     }
     return;
   }
@@ -3056,12 +3062,4 @@ if (dexRange1y){
   refreshLiquidityPanel();
   startLiquidityPolling();
 })();
-
-
-
-
-
-
-
-
 

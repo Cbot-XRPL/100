@@ -920,6 +920,9 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
     flex:1 1 calc(50% - 6px);
     justify-content:center;
   }
+  .hero .ctaRow a[href="#richlist"]{
+    display:none;
+  }
   .statGrid{
     grid-template-columns:1fr;
   }
