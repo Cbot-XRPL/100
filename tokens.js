@@ -31,7 +31,7 @@ window.ONYX_TOKENS = [
     bitrueTradeUrl: "https://www.bitrue.com/trade/xah_usdt",
     xahTeleportUrl: "https://xumm.app/detect/xapp:xahau.teleport",
     whitepaper: "XAH is the native asset of the Xahau network. This view tracks USD pricing and market context.",
-    whitepaperHtml: "",
+    whitepaperHtml: "https://xahau.org/docs/resources/whitepaper",
     description:
       "Native network asset on Xahau, priced directly in USD for this dashboard.",
     badgeRules: [],
@@ -130,7 +130,7 @@ window.ONYX_TOKENS = [
     explorerUrl: "https://xahauexplorer.com/en/token/rLRVSaK575YXwwnkC5QSTLK7E1r1ps5TCs/584D455243480000000000000000000000000000",
     xUrl: "https://x.com/xMerch_",
     whitepaper: "XMERCH is an ecosystem token for xMerch activity on Xahau. This hub tracks distribution, holder badges, and live trustline-driven activity to monitor adoption.",
-    whitepaperHtml: "",
+    whitepaperHtml: "https://www.xmerch.app/",
     description:
       "Xmerch token on Xahau used across the xMerch ecosystem.",
     badgeRules: [
@@ -147,6 +147,4 @@ window.ONYX_TOKENS = [
     whaleTopN: [1, 3, 5, 10, 25, 50],
   },
 ];
-
-
 

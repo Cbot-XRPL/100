@@ -633,6 +633,12 @@ function setHeroUsdPrice(valueText){
   if (!statPriceUsdEl) return;
   statPriceUsdEl.textContent = valueText;
 }
+function setLiquidityMetaText(nextText){
+  if (!liqMeta) return;
+  const next = String(nextText == null ? "" : nextText);
+  if (liqMeta.textContent === next) return;
+  liqMeta.textContent = next;
+}
 function renderLiquiditySkeleton(label){
   renderLiquidityMetrics([
     { k: "Accessible USD (2% slip)", v: label || "$0" },
@@ -645,14 +651,14 @@ function setLiquidityLoading(msg){
   if (liqScoreEl) liqScoreEl.textContent = "0";
   if (liqSpreadEl) liqSpreadEl.textContent = msg || "loading book depth...";
   if (liqBar) liqBar.style.width = "0%";
-  if (liqMeta) liqMeta.textContent = "loading";
+  setLiquidityMetaText("loading");
   renderLiquiditySkeleton("loading");
 }
 function resetLiquidityPanel(msg){
   if (liqScoreEl) liqScoreEl.textContent = "0";
   if (liqSpreadEl) liqSpreadEl.textContent = msg || "-";
   if (liqBar) liqBar.style.width = "0%";
-  if (liqMeta) liqMeta.textContent = "-";
+  setLiquidityMetaText("-");
   renderLiquiditySkeleton("0");
 }
 function parseXahAmount(v){
@@ -1394,7 +1400,9 @@ async function refreshLiquidityPanel(){
 
   if (isNativeXahToken(token)){
     try{
-      if (liqMeta) liqMeta.textContent = "loading XAH/USDT depth...";
+      if (!hasLiquidityDataRendered){
+        setLiquidityMetaText("loading XAH/USDT depth...");
+      }
       // Keep price responsive even if depth endpoint is slow/unavailable.
       try{
         const xahUsdEarly = await fetchXahUsdPrice();
@@ -1417,7 +1425,7 @@ async function refreshLiquidityPanel(){
       });
       if (liqScoreEl) liqScoreEl.textContent = String(scoreState.score);
       if (liqBar) liqBar.style.width = `${scoreState.score}%`;
-      if (liqMeta) liqMeta.textContent = `${snap.bidsCount} bids | ${snap.asksCount} asks | Bitrue XAH/USDT`;
+      setLiquidityMetaText(`${snap.bidsCount} bids | ${snap.asksCount} asks | Bitrue XAH/USDT`);
 
       if (snap.hasTwoSided){
         if (liqSpreadEl) liqSpreadEl.textContent = `${snap.spreadBps.toFixed(1)} bps spread`;
@@ -1468,7 +1476,7 @@ async function refreshLiquidityPanel(){
           usedTickerFallback = true;
           if (liqScoreEl) liqScoreEl.textContent = "0";
           if (liqBar) liqBar.style.width = "0%";
-          if (liqMeta) liqMeta.textContent = "ticker fallback (depth unavailable)";
+          setLiquidityMetaText("ticker fallback (depth unavailable)");
           if (liqSpreadEl) liqSpreadEl.textContent = Number.isFinite(tick.spreadBps) ? `${tick.spreadBps.toFixed(1)} bps spread` : "depth unavailable";
           renderLiquidityMetrics([
             { k: "Best Bid", v: Number.isFinite(tick.bestBid) ? fmtUsd(tick.bestBid) : "-" },
@@ -1488,11 +1496,11 @@ async function refreshLiquidityPanel(){
       if (!usedTickerFallback){
         if (!hasLiquidityDataRendered){
           resetLiquidityPanel("bitrue unavailable");
-          if (liqMeta) liqMeta.textContent = `api error: ${String(err?.message || err || "unknown")}`;
+          setLiquidityMetaText(`api error: ${String(err?.message || err || "unknown")}`);
           if (liqSpreadEl) liqSpreadEl.textContent = "XAH/USDT book unavailable";
           if (liqNote) liqNote.textContent = "Bitrue API failed. Falling back to USD price only.";
         } else {
-          if (liqMeta) liqMeta.textContent = `api error (showing last): ${String(err?.message || err || "unknown")}`;
+          setLiquidityMetaText(`api error (showing last): ${String(err?.message || err || "unknown")}`);
         }
       }
       try{
@@ -1517,7 +1525,7 @@ async function refreshLiquidityPanel(){
     const snap = await fetchLiquiditySnapshot(token);
     if (reqNonce !== liquidityReqNonce || token !== activeToken) return;
 
-    if (liqMeta) liqMeta.textContent = `${snap.bidsCount} bids | ${snap.asksCount} asks`;
+    setLiquidityMetaText(`${snap.bidsCount} bids | ${snap.asksCount} asks`);
 
     let xahUsd = NaN;
     try{
@@ -1594,10 +1602,10 @@ async function refreshLiquidityPanel(){
     if (reqNonce !== liquidityReqNonce || token !== activeToken) return;
     if (!hasLiquidityDataRendered){
       resetLiquidityPanel("book depth unavailable");
-      if (liqMeta) liqMeta.textContent = "ws error";
+      setLiquidityMetaText("ws error");
       setHeroUsdPrice("-");
     } else {
-      if (liqMeta) liqMeta.textContent = "ws error (showing last liquidity snapshot)";
+      setLiquidityMetaText("ws error (showing last liquidity snapshot)");
     }
   } finally {
     liquidityBusy = false;
@@ -2892,7 +2900,11 @@ function applyTokenToUI(){
     whitepaperSummary.textContent = activeToken.whitepaper || "White paper text coming soon.";
   }
   if (whitepaperMeta){
-    whitepaperMeta.textContent = (activeToken.whitepaper || activeToken.whitepaperHtml) ? "live" : "pending";
+    if (String(activeToken.id) === "100"){
+      whitepaperMeta.textContent = "coming soon";
+    } else {
+      whitepaperMeta.textContent = (activeToken.whitepaper || activeToken.whitepaperHtml) ? "live" : "pending";
+    }
   }
   if (btnTokenExplorer){
     const hasExplorer = Boolean(activeToken.explorerUrl);

@@ -1,4 +1,4 @@
-﻿@media (max-width: 768px){
+@media (max-width: 768px){
   #emojiField{
     opacity:.55;
     filter:drop-shadow(0 0 6px rgba(255,45,45,.14));
@@ -1160,4 +1160,9 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
 
 
 
+
+
+#xahImportSub b{
+  color:var(--accent);
+}
 
