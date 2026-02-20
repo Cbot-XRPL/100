@@ -39,7 +39,7 @@ window.ONYX_TOKENS = [
   },
   {
     id: "100",
-    name: "ONE Hundred",
+    name: "One Hundred",
     symbol: "ONE",
     issuer: "roneGNc3hdSwWZEr54RZceQr8Fftq6fkL",
     totalSupply: 100,
@@ -58,10 +58,10 @@ window.ONYX_TOKENS = [
     ws: "wss://xahau.network",
     explorerUrl: "https://xahauexplorer.com/en/token/roneGNc3hdSwWZEr54RZceQr8Fftq6fkL/ONE",
     xUrl: "https://x.com/One_Xahau",
-    whitepaper: "ONE is a tiny-supply culture token on Xahau focused on building a legendary community through badge challenges, transparent holder distribution, and active DEX participation. Help test the liquidity tool on Xahau as we refine the next scoring tiers.",
+    whitepaper: "ONE is a tiny-supply culture token on Xahau focused on building a legendary community through badge challenges, transparent holder distribution, and active DEX participation. Help test liquidity tools and tune data systems on Xahau.",
     whitepaperHtml: "",
     description:
-      "A culture token on Xahau built for badge hunters, DEX participants, and early community builders. Help test the liquidity tool on Xahau while we tune baseline rankings into higher tiers.",
+      "A culture token on Xahau built for badge hunters, DEX participants, and early community builders. Help test liquidity tools and tune data systems on Xahau.",
     badgeRules: [
       { id: "top1", title: "Top Holder", icon: "\u{1F947}", className: "gold", type: "rank", rank: 1, rule: "Rank #1 wallet" },
       { id: "top2", title: "Runner Up", icon: "\u{1F948}", className: "silver", type: "rank", rank: 2, rule: "Rank #2 wallet" },

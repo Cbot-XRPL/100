@@ -199,6 +199,7 @@ let hasLiquidityDataRendered = false;
 const liquidityFirstLoadShownByToken = new Set();
 let dexChartRangeDays = 7;
 let dexChartReqNonce = 0;
+const dexChartCache = new Map();
 const loadedRichlistTokenIds = new Set();
 let richlistObserver = null;
 let renderedHoldersTokenId = null;
@@ -809,6 +810,38 @@ function chartPairBase(token){
   if (!token?.issuer || !c) return "";
   return `${token.issuer}_${c}`;
 }
+function getDexChartCacheKey(token, days){
+  const id = String(token?.id || token?.symbol || "token");
+  return `${id}:${Number(days) || 0}`;
+}
+function readDexChartCache(token, days){
+  const key = getDexChartCacheKey(token, days);
+  const cached = dexChartCache.get(key);
+  if (!cached || !Array.isArray(cached.series) || !Number.isFinite(cached.ts)) return null;
+  return cached;
+}
+function writeDexChartCache(token, days, payload){
+  if (!payload || !Array.isArray(payload.series) || !payload.series.length) return;
+  const key = getDexChartCacheKey(token, days);
+  dexChartCache.set(key, {
+    series: payload.series,
+    alreadyUsd: Boolean(payload.alreadyUsd),
+    ts: Date.now()
+  });
+}
+async function fetchJsonNoStore(url, timeoutMs = 12000){
+  const ctrl = new AbortController();
+  const t = setTimeout(() => {
+    try{ ctrl.abort(); }catch{}
+  }, timeoutMs);
+  try{
+    const resp = await fetch(url, { cache: "no-store", signal: ctrl.signal });
+    if (!resp.ok) throw new Error(`http ${resp.status}`);
+    return await resp.json();
+  } finally {
+    clearTimeout(t);
+  }
+}
 function setDexRangeButtons(){
   if (dexRange7d){
     dexRange7d.classList.toggle("active", dexChartRangeDays === 7);
@@ -834,28 +867,44 @@ function setDexChartPairLabel(token){
 async function fetchDexChartHistory(token, days){
   if (isNativeXahToken(token)){
     const dayParam = [1, 7, 14, 30, 90, 180, 365].includes(days) ? days : 30;
-    const url = `https://api.coingecko.com/api/v3/coins/xahau/ohlc?vs_currency=usd&days=${dayParam}`;
-    const resp = await fetch(url, { cache: "no-store" });
-    if (!resp.ok) throw new Error("xah chart fetch failed");
-    const arr = await resp.json();
-    if (!Array.isArray(arr)) return { series: [], alreadyUsd: true };
-    const series = arr
-      .map((x) => ({
-        t: Number(x?.[0]),
-        o: Number(x?.[1]),
-        h: Number(x?.[2]),
-        l: Number(x?.[3]),
-        c: Number(x?.[4])
-      }))
-      .filter((x) =>
-        Number.isFinite(x.t) &&
-        Number.isFinite(x.o) &&
-        Number.isFinite(x.h) &&
-        Number.isFinite(x.l) &&
-        Number.isFinite(x.c) &&
-        x.h > 0 &&
-        x.l > 0
-      )
+    const stamp = Date.now();
+    const ohlcUrl = `https://api.coingecko.com/api/v3/coins/xahau/ohlc?vs_currency=usd&days=${dayParam}&x=${stamp}`;
+    try{
+      const arr = await fetchJsonNoStore(ohlcUrl, 12000);
+      if (!Array.isArray(arr)) return { series: [], alreadyUsd: true };
+      const series = arr
+        .map((x) => ({
+          t: Number(x?.[0]),
+          o: Number(x?.[1]),
+          h: Number(x?.[2]),
+          l: Number(x?.[3]),
+          c: Number(x?.[4])
+        }))
+        .filter((x) =>
+          Number.isFinite(x.t) &&
+          Number.isFinite(x.o) &&
+          Number.isFinite(x.h) &&
+          Number.isFinite(x.l) &&
+          Number.isFinite(x.c) &&
+          x.h > 0 &&
+          x.l > 0
+        )
+        .sort((a, b) => a.t - b.t);
+      if (series.length) return { series, alreadyUsd: true };
+    }catch{
+      // fallback below
+    }
+
+    const marketUrl = `https://api.coingecko.com/api/v3/coins/xahau/market_chart?vs_currency=usd&days=${dayParam}&x=${stamp}`;
+    const market = await fetchJsonNoStore(marketUrl, 12000);
+    const prices = Array.isArray(market?.prices) ? market.prices : [];
+    const series = prices
+      .map((p) => {
+        const t = Number(p?.[0]);
+        const px = Number(p?.[1]);
+        return { t, o: px, h: px, l: px, c: px };
+      })
+      .filter((x) => Number.isFinite(x.t) && Number.isFinite(x.c) && x.c > 0)
       .sort((a, b) => a.t - b.t);
     return { series, alreadyUsd: true };
   }
@@ -1017,17 +1066,28 @@ async function loadDexChartHistory(){
     renderDexChart([], NaN, false);
     return;
   }
+  const tokenAtRequest = activeToken;
+  const daysAtRequest = dexChartRangeDays;
+  const cached = readDexChartCache(tokenAtRequest, daysAtRequest);
   const chartTaskId = beginLoadBarTask(`Loading ${activeToken.symbol || "token"} chart...`, 12);
   setDexRangeButtons();
-  if (dexChartMeta) dexChartMeta.textContent = "loading";
-  if (dexChartEmpty){
-    dexChartEmpty.textContent = "Loading chart...";
-    dexChartEmpty.style.display = "";
+  if (!cached){
+    if (dexChartMeta) dexChartMeta.textContent = "loading";
+    if (dexChartEmpty){
+      dexChartEmpty.textContent = "Loading chart...";
+      dexChartEmpty.style.display = "";
+    }
+  } else {
+    renderDexChart(cached.series, Number.isFinite(xahUsdCache.px) ? xahUsdCache.px : NaN, Boolean(cached.alreadyUsd));
+    if (dexChartMeta){
+      const ageSec = Math.max(0, Math.floor((Date.now() - cached.ts) / 1000));
+      dexChartMeta.textContent = `${daysAtRequest}D | ${cached.series.length} candles | cached ${ageSec}s`;
+    }
   }
   try{
     updateLoadBarTask(chartTaskId, { label: `Loading ${activeToken.symbol || "token"} chart candles...`, target: 40 });
     const [hist, xahUsd] = await Promise.all([
-      fetchDexChartHistory(activeToken, dexChartRangeDays),
+      fetchDexChartHistory(tokenAtRequest, daysAtRequest),
       (async () => {
         try{
           return await fetchXahUsdPrice();
@@ -1039,10 +1099,21 @@ async function loadDexChartHistory(){
     if (reqNonce !== dexChartReqNonce) return;
     updateLoadBarTask(chartTaskId, { label: `Rendering ${activeToken.symbol || "token"} chart...`, target: 86 });
     renderDexChart(hist.series || [], xahUsd, Boolean(hist.alreadyUsd));
+    writeDexChartCache(tokenAtRequest, daysAtRequest, hist);
   }catch{
     if (reqNonce !== dexChartReqNonce) return;
-    if (dexChartMeta) dexChartMeta.textContent = "api error";
-    renderDexChart([], NaN, false);
+    const fallback = readDexChartCache(tokenAtRequest, daysAtRequest);
+    if (fallback){
+      renderDexChart(
+        fallback.series || [],
+        Number.isFinite(xahUsdCache.px) ? xahUsdCache.px : NaN,
+        Boolean(fallback.alreadyUsd)
+      );
+      if (dexChartMeta) dexChartMeta.textContent = `${daysAtRequest}D | ${fallback.series.length} candles | showing cached`;
+    } else {
+      if (dexChartMeta) dexChartMeta.textContent = "api error";
+      renderDexChart([], NaN, false);
+    }
   } finally {
     endLoadBarTask(chartTaskId, "Chart updated");
   }
@@ -2656,7 +2727,6 @@ function buildTradeUrl(token){
 function setPills(){
   pillRow.innerHTML = "";
   const pills = [
-    { k:"Network", v: "Xahau" },
     { k:"Social", v: "Twitter", href: activeToken.xUrl || "#" }
   ];
   for (const p of pills){
