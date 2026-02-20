@@ -1,4 +1,4 @@
-/******************************************************************
+﻿/******************************************************************
  * ONYX HUB - Multi-token (no backend)
  * - Rich list: account_lines (issuer) via WebSocket
  * - Live feed: subscribe stream via WebSocket
@@ -42,6 +42,7 @@ const btnTokenDetails = document.getElementById("btnTokenDetails");
 const btnTrustline = document.getElementById("btnTrustline");
 const btnTrade = document.getElementById("btnTrade");
 const btnXahImport = document.getElementById("btnXahImport");
+const btnBitrueTrade = document.getElementById("btnBitrueTrade");
 const btnXahTeleport = document.getElementById("btnXahTeleport");
 const xahToolsRow = document.getElementById("xahToolsRow");
 const btnX = document.getElementById("btnX");
@@ -165,7 +166,7 @@ const FEED_RENDER_LIMIT = 20;
 const FEED_STORE_LIMIT = 60;
 const DEFAULT_TABLE_RENDER_LIMIT = 100;
 const DEFAULT_RICHLIST_CACHE_TTL_MS = 120000;
-const XAH_TEMPLATE_CACHE_KEY = "onyx.xah.template.v1";
+const XAH_TEMPLATE_CACHE_KEY = "onyx.xah.template.v2";
 let showAllRows = false;
 let liquidityReqNonce = 0;
 let xahUsdCache = { px: NaN, ts: 0 };
@@ -201,9 +202,9 @@ let xahSupplySnapshot = { circulating: NaN, fullSupply: NaN, accounts: NaN, ts: 
 let xahHeroInfoReqNonce = 0;
 let xahNetworkInfoCache = { ledgerIndex: NaN, version: "", ts: 0 };
 const XAH_FALLBACK_SNAPSHOT = {
-  circulating: 489293309.31,
-  fullSupply: 644606185.90,
-  accounts: 201406
+  circulating: 489287073.4336,
+  fullSupply: 644600076,
+  accounts: 186441
 };
 
 function getTableRenderLimit(){
@@ -270,14 +271,30 @@ function writeXahTemplateCache(payload){
     // ignore quota/privacy errors
   }
 }
-function buildXahApproxHolders({ circulating, accounts, topHolders = [] }){
+function buildXahApproxHolders({ circulating, fullSupply, accounts, topHolders = [] }){
   const circ = Number(circulating);
   if (!Number.isFinite(circ) || circ <= 0) return [];
 
-  const presetTopShares = [0.14, 0.09, 0.065, 0.045, 0.03, 0.022, 0.016, 0.012, 0.009, 0.007];
-  const presetTopHolders = presetTopShares.map((share, i) => ({
+  const full = Number(fullSupply);
+  const pctBase = Number.isFinite(full) && full > 0 ? full : circ;
+
+  // Targets tuned to live XAH distribution (Top1/3/5/10/25/50).
+  const presetTopPercents = [
+    3.28,
+    2.25, 2.12,
+    1.75, 1.63,
+    1.10, 1.02, 0.90, 0.86, 0.84,
+    0.50, 0.48, 0.47, 0.46, 0.45, 0.44, 0.43, 0.42, 0.41, 0.40,
+    0.40, 0.39, 0.38, 0.38, 0.37,
+    0.22, 0.21, 0.21, 0.20, 0.20,
+    0.20, 0.19, 0.19, 0.18, 0.18,
+    0.18, 0.18, 0.18, 0.17, 0.17,
+    0.17, 0.17, 0.17, 0.17, 0.17,
+    0.17, 0.17, 0.17, 0.17, 0.16
+  ];
+  const presetTopHolders = presetTopPercents.map((pct, i) => ({
     address: `rXahPresetTop${String(i + 1).padStart(6, "0")}`,
-    balance: circ * share
+    balance: pctBase * (pct / 100)
   }));
 
   const sanitizedTop = (Array.isArray(topHolders) ? topHolders : [])
@@ -559,7 +576,7 @@ function setBrandLogo(){
 function shortAddr(a){
   if (!a) return "";
   if (a.length <= 14) return a;
-  return a.slice(0, 6) + "…" + a.slice(-6);
+  return a.slice(0, 6) + "â€¦" + a.slice(-6);
 }
 function displayAddr(a){
   if (!a) return "";
@@ -2177,6 +2194,7 @@ async function loadHolders({ forceNetwork = false } = {}){
         const tpl = readXahTemplateCache();
         const approx = buildXahApproxHolders({
           circulating: Number.isFinite(info.circulating) && info.circulating > 0 ? info.circulating : tpl?.circulating,
+          fullSupply: Number.isFinite(info.fullSupply) && info.fullSupply > 0 ? info.fullSupply : activeToken?.totalSupply,
           accounts: Number.isFinite(info.accounts) && info.accounts > 0 ? info.accounts : tpl?.accounts,
           topHolders: Array.isArray(tpl?.topHolders) ? tpl.topHolders : []
         });
@@ -2541,7 +2559,9 @@ function buildTrustlineUrl(token){
 
 function buildTradeUrl(token){
   if (isNativeXahToken(token)) return "#";
-  return `https://xmagnetic.org/trade?issuer=${encodeURIComponent(token.issuer || "")}&currency=${encodeURIComponent(getTokenCurrency(token))}&limit=${encodeURIComponent(String(token.totalSupply || ""))}`;
+  const currency = encodeURIComponent(getTokenCurrency(token));
+  const issuer = encodeURIComponent(token.issuer || "");
+  return `https://xmagnetic.org/tokens/${currency}+${issuer}?network=xahau`;
 
 }
 
@@ -2625,6 +2645,7 @@ async function primeXahSupplyFromApi({ refreshApprox = true } = {}){
       const tpl = readXahTemplateCache();
       const approx = buildXahApproxHolders({
         circulating,
+        fullSupply,
         accounts,
         topHolders: Array.isArray(tpl?.topHolders) ? tpl.topHolders : []
       });
@@ -2683,7 +2704,7 @@ function applyTokenToUI(){
   if (!activeToken) return;
   setEmojiFieldForToken(activeToken);
 
-  document.title = `One Xahau — ${activeToken?.symbol || activeToken?.name || "100"}`;
+  document.title = `One Xahau â€” ${activeToken?.symbol || activeToken?.name || "100"}`;
   setBrandLogo();
   setTokenLogo(heroEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
   setTokenLogo(statEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
@@ -2735,6 +2756,9 @@ function applyTokenToUI(){
   if (btnXahImport){
     btnXahImport.href = activeToken.xahImportUrl || "https://xumm.app/detect/xapp:nixer.xahauimport";
   }
+  if (btnBitrueTrade){
+    btnBitrueTrade.href = activeToken.bitrueTradeUrl || "https://www.bitrue.com/trade/xah_usdt";
+  }
   if (btnXahTeleport){
     btnXahTeleport.href = activeToken.xahTeleportUrl || "https://xumm.app/detect/xapp:xahau.teleport";
   }
@@ -2749,6 +2773,9 @@ function applyTokenToUI(){
   btnTrade.style.display = nativeXah ? "none" : "inline-flex";
   if (btnXahImport){
     btnXahImport.style.display = nativeXah ? "inline-flex" : "none";
+  }
+  if (btnBitrueTrade){
+    btnBitrueTrade.style.display = nativeXah ? "inline-flex" : "none";
   }
   if (btnXahTeleport){
     btnXahTeleport.style.display = nativeXah ? "inline-flex" : "none";
@@ -2928,5 +2955,7 @@ if (dexRange1y){
   refreshLiquidityPanel();
   startLiquidityPolling();
 })();
+
+
 
 

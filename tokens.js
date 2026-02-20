@@ -28,6 +28,7 @@ window.ONYX_TOKENS = [
     explorerUrl: "https://xahauexplorer.com",
     xUrl: "https://x.com/XahauNetwork",
     xahImportUrl: "https://xumm.app/detect/xapp:nixer.xahauimport",
+    bitrueTradeUrl: "https://www.bitrue.com/trade/xah_usdt",
     xahTeleportUrl: "https://xumm.app/detect/xapp:xahau.teleport",
     whitepaper: "XAH is the native asset of the Xahau network. This view tracks USD pricing and market context.",
     whitepaperHtml: "",

@@ -135,7 +135,11 @@ header{
   transform:translate(-1.4%, 3.4%) scale(1.58);
   transform-origin:center;
 }
-.brand .titles{display:flex; flex-direction:column}
+.brand .titles{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
 .brand .titles .top{
   font-weight:800; letter-spacing:.5px; font-size:15px;
   color:rgba(255,255,255,.85); text-transform:uppercase;
@@ -148,7 +152,13 @@ header{
   line-height:1.2;
 }
 .brand .titles .sub{
-  font-size:14px; color:var(--muted); font-family:var(--mono);
+  font-size:10px;
+  color:rgba(255,255,255,.66);
+  font-family:var(--sans);
+  font-weight:700;
+  letter-spacing:.9px;
+  line-height:1.25;
+  text-transform:uppercase;
 }
 
 .rightHeader{
@@ -352,7 +362,7 @@ select option{
   border-color:rgba(255,255,255,.24);
   background:rgba(255,255,255,.07);
 }
-.ctaRow{margin-top:14px; display:flex; gap:10px; flex-wrap:wrap}
+.ctaRow{margin-top:14px; margin-bottom:10px; display:flex; gap:10px; flex-wrap:wrap}
 
 .cardRight{
   border-radius:var(--radius);
@@ -1056,9 +1066,12 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
   color:rgba(255,255,255,.72);
 }
 .xahToolsRow{
-  margin-top:10px;
+  margin-top:-86px;
   display:grid;
   grid-template-columns:repeat(2, minmax(240px, 1fr));
+  grid-template-areas:
+    ". import"
+    "bitrue teleport";
   gap:8px;
 }
 .xahToolCard{
@@ -1067,6 +1080,9 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
   padding:8px;
   background:rgba(255,255,255,.03);
 }
+#xahImportCard{grid-area:import}
+#xahBitrueCard{grid-area:bitrue}
+#xahTeleportCard{grid-area:teleport}
 .xahToolCard .btn{
   width:100%;
   justify-content:center;
@@ -1079,7 +1095,37 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
 }
 @media (max-width: 760px){
   .xahToolsRow{
+    margin-top:10px;
     grid-template-columns:1fr;
+    grid-template-areas:none;
+  }
+}
+
+/* Final mobile alignment pass */
+@media (max-width: 768px){
+  .rightHeader{
+    justify-content:center;
+    align-items:center;
+  }
+  .tokenPicker{
+    margin-inline:auto;
+    text-align:center;
+  }
+  .links{
+    justify-content:center;
+  }
+  .hero h1,
+  .hero p,
+  .pillRow,
+  .ctaRow{
+    justify-content:center;
+    text-align:center;
+  }
+  .cardHint{
+    text-align:center;
+  }
+  .panelBody .miniNote{
+    text-align:center;
   }
 }
 
