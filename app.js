@@ -654,21 +654,6 @@ function resetLiquidityPanel(msg){
   if (liqMeta) liqMeta.textContent = "-";
   renderLiquiditySkeleton("0");
 }
-function liqDebugCode(err, fallback = "API_UNKNOWN"){
-  const m = String(err?.message || err || "").toLowerCase();
-  if (!m) return fallback;
-  if (m.includes("timeout")) return "API_TIMEOUT";
-  if (m.includes("http")) return "API_HTTP";
-  if (m.includes("abort")) return "API_ABORT";
-  if (m.includes("ws")) return "API_WS";
-  if (m.includes("invalid")) return "API_INVALID";
-  return fallback;
-}
-function setLiquidityDebug(stage, code, detail = ""){
-  if (!liqNote) return;
-  const clean = String(detail || "").replace(/\s+/g, " ").trim();
-  liqNote.textContent = `${stage} | ${code}${clean ? ` | ${clean}` : ""}`;
-}
 function parseXahAmount(v){
   if (v == null) return NaN;
   if (typeof v === "string"){
@@ -1405,12 +1390,10 @@ async function refreshLiquidityPanel(){
   const liquidityTaskId = shouldShowLiquidityBar
     ? beginLoadBarTask(`Loading ${token.symbol || "token"} book depth...`, 12)
     : null;
-  setLiquidityDebug("APP_LIQ_START", "APP_OK", `token:${tokenLoadKey}`);
 
   if (isNativeXahToken(token)){
     try{
       if (liqMeta) liqMeta.textContent = "loading XAH/USDT depth...";
-      setLiquidityDebug("APP_XAH", "APP_PRICE_WARMUP", "fetchXahUsdPrice");
       // Keep price responsive even if depth endpoint is slow/unavailable.
       try{
         const xahUsdEarly = await fetchXahUsdPrice();
@@ -1419,9 +1402,7 @@ async function refreshLiquidityPanel(){
         }
       }catch{
         // keep existing price while depth loads
-        setLiquidityDebug("APP_XAH", "API_XAH_USD_FAIL", "price warmup failed");
       }
-      setLiquidityDebug("APP_XAH", "APP_FETCH_DEPTH", "fetchBitrueXahLiquiditySnapshot");
       updateLoadBarTask(liquidityTaskId, { label: "Loading XAH/USDT depth from Bitrue...", target: 42 });
       const snap = await fetchBitrueXahLiquiditySnapshot();
       if (reqNonce !== liquidityReqNonce || token !== activeToken) return;
@@ -1475,7 +1456,6 @@ async function refreshLiquidityPanel(){
           .join(" | ");
         liqNote.textContent = `Bitrue XAH/USDT depth tiers: ${tierText}. Target ${fmtUsd(scoreState.config.depthTargetUsd)} (${formatLiquidityProfileLabel(scoreState.config.profile)}, scale ${scoreState.config.scale}).`;
       }
-      setLiquidityDebug("APP_XAH", "APP_OK", "depth+price live");
       hasLiquidityDataRendered = true;
       liquidityFirstLoadShownByToken.add(tokenLoadKey);
     }catch(err){
@@ -1498,7 +1478,7 @@ async function refreshLiquidityPanel(){
             { k: "Liquidity Profile", v: `${formatLiquidityProfileLabel(getLiquidityScoreConfig(token).profile)} (${getLiquidityScoreConfig(token).scale})` }
           ]);
           setHeroUsdPrice(Number.isFinite(tick.lastPrice) ? fmtUsd(tick.lastPrice) : (Number.isFinite(tick.mid) ? fmtUsd(tick.mid) : "-"));
-          setLiquidityDebug("APP_XAH_FALLBACK", "API_BITRUE_DEPTH_FAIL", String(err?.message || err || "unknown"));
+          if (liqNote) liqNote.textContent = "Bitrue depth failed; showing ticker fallback until depth responds.";
           hasLiquidityDataRendered = true;
         }
       }catch{
@@ -1509,10 +1489,9 @@ async function refreshLiquidityPanel(){
           resetLiquidityPanel("bitrue unavailable");
           if (liqMeta) liqMeta.textContent = `api error: ${String(err?.message || err || "unknown")}`;
           if (liqSpreadEl) liqSpreadEl.textContent = "XAH/USDT book unavailable";
-          setLiquidityDebug("APP_XAH_ERROR", liqDebugCode(err, "API_BITRUE_FAIL"), String(err?.message || err || "unknown"));
+          if (liqNote) liqNote.textContent = "Bitrue API failed. Falling back to USD price only.";
         } else {
           if (liqMeta) liqMeta.textContent = `api error (showing last): ${String(err?.message || err || "unknown")}`;
-          setLiquidityDebug("APP_XAH_ERROR", liqDebugCode(err, "API_BITRUE_FAIL"), "showing last snapshot");
         }
       }
       try{
@@ -1524,7 +1503,6 @@ async function refreshLiquidityPanel(){
         if (reqNonce === liquidityReqNonce && token === activeToken){
           if (!hasLiquidityDataRendered) setHeroUsdPrice("-");
         }
-        setLiquidityDebug("APP_XAH_ERROR", "API_XAH_USD_FAIL", "price fallback failed");
       }
     } finally {
       liquidityBusy = false;
@@ -1617,10 +1595,8 @@ async function refreshLiquidityPanel(){
       resetLiquidityPanel("book depth unavailable");
       if (liqMeta) liqMeta.textContent = "ws error";
       setHeroUsdPrice("-");
-      setLiquidityDebug("APP_IOU_ERROR", "API_WS_FAIL", "book_offers path failed");
     } else {
       if (liqMeta) liqMeta.textContent = "ws error (showing last liquidity snapshot)";
-      setLiquidityDebug("APP_IOU_ERROR", "API_WS_FAIL", "showing last snapshot");
     }
   } finally {
     liquidityBusy = false;
