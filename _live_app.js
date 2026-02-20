@@ -17,7 +17,6 @@ const loadBar = document.getElementById("loadBar");
 const loadBarText = document.getElementById("loadBarText");
 
 const tokenSelect = document.getElementById("tokenSelect");
-const brandLogoLink = document.getElementById("brandLogoLink");
 const brandEmoji = document.getElementById("brandEmoji");
 const heroEmoji = document.getElementById("heroEmoji");
 const heroName = document.getElementById("heroName");
@@ -25,8 +24,6 @@ const heroDesc = document.getElementById("heroDesc");
 const brandSub = document.getElementById("brandSub");
 const cardHint = document.getElementById("cardHint");
 const pillRow = document.getElementById("pillRow");
-const ctaRow = document.querySelector(".ctaRow");
-const cardRight = document.querySelector(".cardRight");
 const statSupply = document.getElementById("statSupply");
 const statEmoji = document.getElementById("statEmoji");
 const statLedgerCard = document.getElementById("statLedgerCard");
@@ -45,7 +42,6 @@ const btnTokenDetails = document.getElementById("btnTokenDetails");
 const btnTrustline = document.getElementById("btnTrustline");
 const btnTrade = document.getElementById("btnTrade");
 const btnXahImport = document.getElementById("btnXahImport");
-const btnBitrueTrade = document.getElementById("btnBitrueTrade");
 const btnXahTeleport = document.getElementById("btnXahTeleport");
 const xahToolsRow = document.getElementById("xahToolsRow");
 const btnX = document.getElementById("btnX");
@@ -108,8 +104,6 @@ const feedList = document.getElementById("feedList");
 const feedReconnect = document.getElementById("feedReconnect");
 const feedPanel = document.getElementById("feed");
 const richlistPanel = document.getElementById("richlist");
-const heroGrid = document.querySelector(".heroGrid");
-const heroMainCol = heroGrid?.firstElementChild || null;
 
 /* ===== FUN: emoji field ===== */
 const EMOJI_COUNT = 42;
@@ -171,7 +165,7 @@ const FEED_RENDER_LIMIT = 20;
 const FEED_STORE_LIMIT = 60;
 const DEFAULT_TABLE_RENDER_LIMIT = 100;
 const DEFAULT_RICHLIST_CACHE_TTL_MS = 120000;
-const XAH_TEMPLATE_CACHE_KEY = "onyx.xah.template.v2";
+const XAH_TEMPLATE_CACHE_KEY = "onyx.xah.template.v1";
 let showAllRows = false;
 let liquidityReqNonce = 0;
 let xahUsdCache = { px: NaN, ts: 0 };
@@ -207,9 +201,9 @@ let xahSupplySnapshot = { circulating: NaN, fullSupply: NaN, accounts: NaN, ts: 
 let xahHeroInfoReqNonce = 0;
 let xahNetworkInfoCache = { ledgerIndex: NaN, version: "", ts: 0 };
 const XAH_FALLBACK_SNAPSHOT = {
-  circulating: 489287073.4336,
-  fullSupply: 644600076,
-  accounts: 186441
+  circulating: 489293309.31,
+  fullSupply: 644606185.90,
+  accounts: 201406
 };
 
 function getTableRenderLimit(){
@@ -276,30 +270,14 @@ function writeXahTemplateCache(payload){
     // ignore quota/privacy errors
   }
 }
-function buildXahApproxHolders({ circulating, fullSupply, accounts, topHolders = [] }){
+function buildXahApproxHolders({ circulating, accounts, topHolders = [] }){
   const circ = Number(circulating);
   if (!Number.isFinite(circ) || circ <= 0) return [];
 
-  const full = Number(fullSupply);
-  const pctBase = Number.isFinite(full) && full > 0 ? full : circ;
-
-  // Targets tuned to live XAH distribution (Top1/3/5/10/25/50).
-  const presetTopPercents = [
-    3.28,
-    2.25, 2.12,
-    1.75, 1.63,
-    1.10, 1.02, 0.90, 0.86, 0.84,
-    0.50, 0.48, 0.47, 0.46, 0.45, 0.44, 0.43, 0.42, 0.41, 0.40,
-    0.40, 0.39, 0.38, 0.38, 0.37,
-    0.22, 0.21, 0.21, 0.20, 0.20,
-    0.20, 0.19, 0.19, 0.18, 0.18,
-    0.18, 0.18, 0.18, 0.17, 0.17,
-    0.17, 0.17, 0.17, 0.17, 0.17,
-    0.17, 0.17, 0.17, 0.17, 0.16
-  ];
-  const presetTopHolders = presetTopPercents.map((pct, i) => ({
+  const presetTopShares = [0.14, 0.09, 0.065, 0.045, 0.03, 0.022, 0.016, 0.012, 0.009, 0.007];
+  const presetTopHolders = presetTopShares.map((share, i) => ({
     address: `rXahPresetTop${String(i + 1).padStart(6, "0")}`,
-    balance: pctBase * (pct / 100)
+    balance: circ * share
   }));
 
   const sanitizedTop = (Array.isArray(topHolders) ? topHolders : [])
@@ -581,7 +559,7 @@ function setBrandLogo(){
 function shortAddr(a){
   if (!a) return "";
   if (a.length <= 14) return a;
-  return a.slice(0, 6) + "..." + a.slice(-6);
+  return a.slice(0, 6) + "…" + a.slice(-6);
 }
 function displayAddr(a){
   if (!a) return "";
@@ -653,21 +631,6 @@ function resetLiquidityPanel(msg){
   if (liqBar) liqBar.style.width = "0%";
   if (liqMeta) liqMeta.textContent = "-";
   renderLiquiditySkeleton("0");
-}
-function liqDebugCode(err, fallback = "API_UNKNOWN"){
-  const m = String(err?.message || err || "").toLowerCase();
-  if (!m) return fallback;
-  if (m.includes("timeout")) return "API_TIMEOUT";
-  if (m.includes("http")) return "API_HTTP";
-  if (m.includes("abort")) return "API_ABORT";
-  if (m.includes("ws")) return "API_WS";
-  if (m.includes("invalid")) return "API_INVALID";
-  return fallback;
-}
-function setLiquidityDebug(stage, code, detail = ""){
-  if (!liqNote) return;
-  const clean = String(detail || "").replace(/\s+/g, " ").trim();
-  liqNote.textContent = `${stage} | ${code}${clean ? ` | ${clean}` : ""}`;
 }
 function parseXahAmount(v){
   if (v == null) return NaN;
@@ -902,23 +865,14 @@ function fmtPct(n){
   const sign = n > 0 ? "+" : "";
   return `${sign}${n.toFixed(2)}%`;
 }
-function fmtChartScalar(n, maxDecimals = 5){
-  if (!Number.isFinite(n)) return "-";
-  const abs = Math.abs(Number(n));
-  let decimals = 2;
-  if (abs < 1) decimals = 4;
-  if (abs < 0.1) decimals = 5;
-  if (abs < 0.01) decimals = maxDecimals;
-  return Number(n).toFixed(decimals).replace(/0+$/,"").replace(/\.$/,"");
-}
 function fmtChartPrice(v, { hasUsd, alreadyUsd, xahUsd }){
   if (!Number.isFinite(v)) return "-";
   if (!hasUsd){
-    return `${fmtChartScalar(v, 5)} XAH`;
+    return `${Number(v).toFixed(6)} XAH`;
   }
   const usdValue = alreadyUsd ? Number(v) : (Number(v) * Number(xahUsd));
   if (!Number.isFinite(usdValue)) return "-";
-  return `$${fmtChartScalar(usdValue, 5)}`;
+  return `$${usdValue.toFixed(4)}`;
 }
 function renderDexChart(series, xahUsd = NaN, alreadyUsd = false){
   if (!dexChartMeta || !dexChartEmpty || !dexChartLow || !dexChartHigh || !dexChartLast || !dexChartGrid || !dexChartCandles){
@@ -1266,27 +1220,14 @@ async function fetchLiquiditySnapshot(token){
   }
 }
 async function fetchBitrueXahLiquiditySnapshot(){
-  const fetchWithTimeout = async (url, timeoutMs = 12000) => {
-    const ctrl = new AbortController();
-    const fetchPromise = fetch(url, { cache: "no-store", signal: ctrl.signal });
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => {
-        try{ ctrl.abort(); }catch{}
-        reject(new Error("bitrue timeout"));
-      }, timeoutMs);
-    });
-    return await Promise.race([fetchPromise, timeoutPromise]);
-  };
   const depthUrl = "https://www.bitrue.com/api/v1/depth?symbol=XAHUSDT&limit=100";
   const tickerUrl = "https://www.bitrue.com/api/v1/ticker/24hr?symbol=XAHUSDT";
 
   const [depthResp, tickerResp] = await Promise.all([
-    fetchWithTimeout(depthUrl),
-    fetchWithTimeout(tickerUrl)
+    fetch(depthUrl, { cache: "no-store" }),
+    fetch(tickerUrl, { cache: "no-store" })
   ]);
-  if (!depthResp.ok || !tickerResp.ok){
-    throw new Error(`bitrue http depth:${depthResp.status} ticker:${tickerResp.status}`);
-  }
+  if (!depthResp.ok || !tickerResp.ok) throw new Error("bitrue http");
 
   const depth = await depthResp.json();
   const tickerRaw = await tickerResp.json();
@@ -1374,21 +1315,6 @@ async function fetchBitrueXahLiquiditySnapshot(){
     hasTwoSided
   };
 }
-async function fetchBitrueXahTickerOnly(){
-  const url = "https://www.bitrue.com/api/v1/ticker/24hr?symbol=XAHUSDT";
-  const resp = await fetch(url, { cache: "no-store" });
-  if (!resp.ok) throw new Error("bitrue ticker http");
-  const raw = await resp.json();
-  const t = Array.isArray(raw) ? (raw[0] || {}) : (raw || {});
-  const bestBid = Number(t?.bidPrice);
-  const bestAsk = Number(t?.askPrice);
-  const lastPrice = Number(t?.lastPrice);
-  const volume24hUsd = Number(t?.quoteVolume);
-  const hasTwoSided = Number.isFinite(bestBid) && Number.isFinite(bestAsk) && bestBid > 0 && bestAsk > 0;
-  const mid = hasTwoSided ? (bestBid + bestAsk) / 2 : (Number.isFinite(lastPrice) && lastPrice > 0 ? lastPrice : NaN);
-  const spreadBps = hasTwoSided && mid > 0 ? ((bestAsk - bestBid) / mid) * 10000 : NaN;
-  return { bestBid, bestAsk, lastPrice, volume24hUsd, mid, spreadBps, hasTwoSided };
-}
 async function refreshLiquidityPanel(){
   if (liquidityBusy) return;
   liquidityBusy = true;
@@ -1401,27 +1327,16 @@ async function refreshLiquidityPanel(){
     return;
   }
   const tokenLoadKey = String(token?.id || token?.symbol || "token");
-  const shouldShowLiquidityBar = !liquidityFirstLoadShownByToken.has(tokenLoadKey) || !hasLiquidityDataRendered;
+  const shouldShowLiquidityBar = !liquidityFirstLoadShownByToken.has(tokenLoadKey);
   const liquidityTaskId = shouldShowLiquidityBar
     ? beginLoadBarTask(`Loading ${token.symbol || "token"} book depth...`, 12)
     : null;
-  setLiquidityDebug("APP_LIQ_START", "APP_OK", `token:${tokenLoadKey}`);
+  if (shouldShowLiquidityBar){
+    liquidityFirstLoadShownByToken.add(tokenLoadKey);
+  }
 
   if (isNativeXahToken(token)){
     try{
-      if (liqMeta) liqMeta.textContent = "loading XAH/USDT depth...";
-      setLiquidityDebug("APP_XAH", "APP_PRICE_WARMUP", "fetchXahUsdPrice");
-      // Keep price responsive even if depth endpoint is slow/unavailable.
-      try{
-        const xahUsdEarly = await fetchXahUsdPrice();
-        if (reqNonce === liquidityReqNonce && token === activeToken && Number.isFinite(xahUsdEarly)){
-          setHeroUsdPrice(fmtUsd(xahUsdEarly));
-        }
-      }catch{
-        // keep existing price while depth loads
-        setLiquidityDebug("APP_XAH", "API_XAH_USD_FAIL", "price warmup failed");
-      }
-      setLiquidityDebug("APP_XAH", "APP_FETCH_DEPTH", "fetchBitrueXahLiquiditySnapshot");
       updateLoadBarTask(liquidityTaskId, { label: "Loading XAH/USDT depth from Bitrue...", target: 42 });
       const snap = await fetchBitrueXahLiquiditySnapshot();
       if (reqNonce !== liquidityReqNonce || token !== activeToken) return;
@@ -1475,45 +1390,16 @@ async function refreshLiquidityPanel(){
           .join(" | ");
         liqNote.textContent = `Bitrue XAH/USDT depth tiers: ${tierText}. Target ${fmtUsd(scoreState.config.depthTargetUsd)} (${formatLiquidityProfileLabel(scoreState.config.profile)}, scale ${scoreState.config.scale}).`;
       }
-      setLiquidityDebug("APP_XAH", "APP_OK", "depth+price live");
       hasLiquidityDataRendered = true;
-      liquidityFirstLoadShownByToken.add(tokenLoadKey);
-    }catch(err){
+    }catch{
       if (reqNonce !== liquidityReqNonce || token !== activeToken) return;
-      let usedTickerFallback = false;
-      try{
-        const tick = await fetchBitrueXahTickerOnly();
-        if (reqNonce === liquidityReqNonce && token === activeToken){
-          usedTickerFallback = true;
-          if (liqScoreEl) liqScoreEl.textContent = "0";
-          if (liqBar) liqBar.style.width = "0%";
-          if (liqMeta) liqMeta.textContent = "ticker fallback (depth unavailable)";
-          if (liqSpreadEl) liqSpreadEl.textContent = Number.isFinite(tick.spreadBps) ? `${tick.spreadBps.toFixed(1)} bps spread` : "depth unavailable";
-          renderLiquidityMetrics([
-            { k: "Best Bid", v: Number.isFinite(tick.bestBid) ? fmtUsd(tick.bestBid) : "-" },
-            { k: "Best Ask", v: Number.isFinite(tick.bestAsk) ? fmtUsd(tick.bestAsk) : "-" },
-            { k: "24h Volume (USDT)", v: Number.isFinite(tick.volume24hUsd) ? fmtUsd(tick.volume24hUsd) : "-" },
-            { k: "Last Price", v: Number.isFinite(tick.lastPrice) ? fmtUsd(tick.lastPrice) : "-" },
-            { k: "Spread %", v: fmtSpreadPctFromBps(tick.spreadBps) },
-            { k: "Liquidity Profile", v: `${formatLiquidityProfileLabel(getLiquidityScoreConfig(token).profile)} (${getLiquidityScoreConfig(token).scale})` }
-          ]);
-          setHeroUsdPrice(Number.isFinite(tick.lastPrice) ? fmtUsd(tick.lastPrice) : (Number.isFinite(tick.mid) ? fmtUsd(tick.mid) : "-"));
-          setLiquidityDebug("APP_XAH_FALLBACK", "API_BITRUE_DEPTH_FAIL", String(err?.message || err || "unknown"));
-          hasLiquidityDataRendered = true;
-        }
-      }catch{
-        usedTickerFallback = false;
-      }
-      if (!usedTickerFallback){
-        if (!hasLiquidityDataRendered){
-          resetLiquidityPanel("bitrue unavailable");
-          if (liqMeta) liqMeta.textContent = `api error: ${String(err?.message || err || "unknown")}`;
-          if (liqSpreadEl) liqSpreadEl.textContent = "XAH/USDT book unavailable";
-          setLiquidityDebug("APP_XAH_ERROR", liqDebugCode(err, "API_BITRUE_FAIL"), String(err?.message || err || "unknown"));
-        } else {
-          if (liqMeta) liqMeta.textContent = `api error (showing last): ${String(err?.message || err || "unknown")}`;
-          setLiquidityDebug("APP_XAH_ERROR", liqDebugCode(err, "API_BITRUE_FAIL"), "showing last snapshot");
-        }
+      if (!hasLiquidityDataRendered){
+        resetLiquidityPanel("bitrue unavailable");
+        if (liqMeta) liqMeta.textContent = "api error";
+        if (liqSpreadEl) liqSpreadEl.textContent = "XAH/USDT book unavailable";
+        if (liqNote) liqNote.textContent = "Bitrue API failed. Falling back to USD price only.";
+      } else {
+        if (liqMeta) liqMeta.textContent = "api error (showing last liquidity snapshot)";
       }
       try{
         const xahUsd = await fetchXahUsdPrice();
@@ -1524,7 +1410,6 @@ async function refreshLiquidityPanel(){
         if (reqNonce === liquidityReqNonce && token === activeToken){
           if (!hasLiquidityDataRendered) setHeroUsdPrice("-");
         }
-        setLiquidityDebug("APP_XAH_ERROR", "API_XAH_USD_FAIL", "price fallback failed");
       }
     } finally {
       liquidityBusy = false;
@@ -1596,7 +1481,6 @@ async function refreshLiquidityPanel(){
         setHeroUsdPrice(Number.isFinite(xahUsd) && xahUsd > 0 ? fmtUsd(snap.mid * xahUsd) : "-");
       }
       hasLiquidityDataRendered = true;
-      liquidityFirstLoadShownByToken.add(tokenLoadKey);
     } else {
       liqSpreadEl.textContent = "one-sided or empty book";
       renderLiquidityMetrics([
@@ -1609,7 +1493,6 @@ async function refreshLiquidityPanel(){
       ]);
       setHeroUsdPrice("-");
       hasLiquidityDataRendered = true;
-      liquidityFirstLoadShownByToken.add(tokenLoadKey);
     }
   }catch{
     if (reqNonce !== liquidityReqNonce || token !== activeToken) return;
@@ -1617,10 +1500,8 @@ async function refreshLiquidityPanel(){
       resetLiquidityPanel("book depth unavailable");
       if (liqMeta) liqMeta.textContent = "ws error";
       setHeroUsdPrice("-");
-      setLiquidityDebug("APP_IOU_ERROR", "API_WS_FAIL", "book_offers path failed");
     } else {
       if (liqMeta) liqMeta.textContent = "ws error (showing last liquidity snapshot)";
-      setLiquidityDebug("APP_IOU_ERROR", "API_WS_FAIL", "showing last snapshot");
     }
   } finally {
     liquidityBusy = false;
@@ -2296,7 +2177,6 @@ async function loadHolders({ forceNetwork = false } = {}){
         const tpl = readXahTemplateCache();
         const approx = buildXahApproxHolders({
           circulating: Number.isFinite(info.circulating) && info.circulating > 0 ? info.circulating : tpl?.circulating,
-          fullSupply: Number.isFinite(info.fullSupply) && info.fullSupply > 0 ? info.fullSupply : activeToken?.totalSupply,
           accounts: Number.isFinite(info.accounts) && info.accounts > 0 ? info.accounts : tpl?.accounts,
           topHolders: Array.isArray(tpl?.topHolders) ? tpl.topHolders : []
         });
@@ -2661,9 +2541,7 @@ function buildTrustlineUrl(token){
 
 function buildTradeUrl(token){
   if (isNativeXahToken(token)) return "#";
-  const currency = encodeURIComponent(getTokenCurrency(token));
-  const issuer = encodeURIComponent(token.issuer || "");
-  return `https://xmagnetic.org/tokens/${currency}+${issuer}?network=xahau`;
+  return `https://xmagnetic.org/trade?issuer=${encodeURIComponent(token.issuer || "")}&currency=${encodeURIComponent(getTokenCurrency(token))}&limit=${encodeURIComponent(String(token.totalSupply || ""))}`;
 
 }
 
@@ -2747,7 +2625,6 @@ async function primeXahSupplyFromApi({ refreshApprox = true } = {}){
       const tpl = readXahTemplateCache();
       const approx = buildXahApproxHolders({
         circulating,
-        fullSupply,
         accounts,
         topHolders: Array.isArray(tpl?.topHolders) ? tpl.topHolders : []
       });
@@ -2806,7 +2683,7 @@ function applyTokenToUI(){
   if (!activeToken) return;
   setEmojiFieldForToken(activeToken);
 
-  document.title = `One Xahau - ${activeToken?.symbol || activeToken?.name || "100"}`;
+  document.title = `One Xahau — ${activeToken?.symbol || activeToken?.name || "100"}`;
   setBrandLogo();
   setTokenLogo(heroEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
   setTokenLogo(statEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
@@ -2825,7 +2702,7 @@ function applyTokenToUI(){
 
 
 
-  brandSub.textContent = "expermental tools + Dex Culture on Xahau";
+  brandSub.textContent = "Live rich lists + DEX culture experiments on Xahau.";
 
 
   heroDesc.textContent = activeToken.description || "Onyx token.";
@@ -2858,9 +2735,6 @@ function applyTokenToUI(){
   if (btnXahImport){
     btnXahImport.href = activeToken.xahImportUrl || "https://xumm.app/detect/xapp:nixer.xahauimport";
   }
-  if (btnBitrueTrade){
-    btnBitrueTrade.href = activeToken.bitrueTradeUrl || "https://www.bitrue.com/trade/xah_usdt";
-  }
   if (btnXahTeleport){
     btnXahTeleport.href = activeToken.xahTeleportUrl || "https://xumm.app/detect/xapp:xahau.teleport";
   }
@@ -2875,9 +2749,6 @@ function applyTokenToUI(){
   btnTrade.style.display = nativeXah ? "none" : "inline-flex";
   if (btnXahImport){
     btnXahImport.style.display = nativeXah ? "inline-flex" : "none";
-  }
-  if (btnBitrueTrade){
-    btnBitrueTrade.style.display = nativeXah ? "inline-flex" : "none";
   }
   if (btnXahTeleport){
     btnXahTeleport.style.display = nativeXah ? "inline-flex" : "none";
@@ -2960,41 +2831,19 @@ function initTokenSelector(){
 }
 
 function wireHeaderOneShortcut(){
-  const jumpToOne = (ev) => {
+  if (!btnExplorer) return;
+  btnExplorer.addEventListener("click", (ev) => {
     ev.preventDefault();
     if (!ONE_TOKEN || !tokenSelect) return;
     if (String(activeToken?.id) === String(ONE_TOKEN.id)) return;
     tokenSelect.value = ONE_TOKEN.id;
     tokenSelect.dispatchEvent(new Event("change"));
-  };
-  if (btnExplorer){
-    btnExplorer.addEventListener("click", jumpToOne);
-  }
-  if (brandLogoLink){
-    brandLogoLink.addEventListener("click", jumpToOne);
-  }
-}
-
-function syncHeroStatsPlacement(){
-  if (!heroGrid || !heroMainCol || !cardRight || !ctaRow) return;
-  const isMobile = window.matchMedia("(max-width: 768px)").matches;
-  if (isMobile){
-    if (cardRight.parentElement !== heroMainCol){
-      heroMainCol.insertBefore(cardRight, ctaRow);
-    }
-    return;
-  }
-  if (cardRight.parentElement !== heroGrid){
-    heroGrid.appendChild(cardRight);
-  }
+  });
 }
 
 /* ===== UI events ===== */
 searchEl.addEventListener("input", () => renderTable());
-window.addEventListener("resize", () => {
-  syncHeroStatsPlacement();
-  renderTable();
-});
+window.addEventListener("resize", () => renderTable());
 
 chips.forEach(chip => {
   chip.addEventListener("click", () => {
@@ -3071,7 +2920,6 @@ if (dexRange1y){
   tokenSelect.value = activeToken.id;
 
   applyTokenToUI();
-  syncHeroStatsPlacement();
   wireRichlistLazyLoad();
   if (!isNativeXahToken(activeToken)){
     ensureRichlistLoadedForActiveToken({ reason: "boot" });
@@ -3080,12 +2928,5 @@ if (dexRange1y){
   refreshLiquidityPanel();
   startLiquidityPolling();
 })();
-
-
-
-
-
-
-
 
 
