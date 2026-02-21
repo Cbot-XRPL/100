@@ -795,11 +795,26 @@ async function fetchXahUsdPrice(){
   if (Number.isFinite(xahUsdCache.px) && (now - xahUsdCache.ts) < 120000){
     return xahUsdCache.px;
   }
+  // Prefer Bitrue ticker because it is already used elsewhere in-browser and
+  // is less likely to be blocked by CORS than CoinGecko simple/price.
+  try{
+    const bitrue = await fetchBitrueXahTickerOnly();
+    const bitruePxCandidates = [bitrue.mid, bitrue.lastPrice, bitrue.bestBid, bitrue.bestAsk];
+    const bitruePx = bitruePxCandidates.find((v) => Number.isFinite(v) && Number(v) > 0);
+    if (Number.isFinite(bitruePx) && Number(bitruePx) > 0){
+      const px = Number(bitruePx);
+      xahUsdCache = { px, ts: Date.now() };
+      return px;
+    }
+  }catch{
+    // CoinGecko fallback below.
+  }
+
   const url = "https://api.coingecko.com/api/v3/simple/price?ids=xahau&vs_currencies=usd";
   const data = await fetchJsonNoStore(url, 10000);
   const px = Number(data?.xahau?.usd);
   if (!Number.isFinite(px) || px <= 0) throw new Error("xah usd invalid");
-  xahUsdCache = { px, ts: now };
+  xahUsdCache = { px, ts: Date.now() };
   return px;
 }
 async function fetchXahSupplyInfo(){
@@ -2624,11 +2639,11 @@ async function loadHolders({ forceNetwork = false } = {}){
       const fullSupply = Number.isFinite(info.fullSupply) && info.fullSupply > 0 ? info.fullSupply : NaN;
       if (Number.isFinite(circulating) && Number.isFinite(fullSupply)){
         tokenAtRequest.totalSupply = fullSupply;
-  statSupply.textContent = fmtSupplyStat(activeToken, fullSupply);
+        if (statSupply) statSupply.textContent = fmtSupplyStat(activeToken, fullSupply);
         if (supplyMeta) supplyMeta.textContent = `${fmt(circulating)} / ${fmt(fullSupply)} circulating`;
       } else if (Number.isFinite(circulating)){
         tokenAtRequest.totalSupply = circulating;
-        statSupply.textContent = fmtSupplyStat(activeToken, circulating);
+        if (statSupply) statSupply.textContent = fmtSupplyStat(activeToken, circulating);
       }
       if (Number.isFinite(info.accounts) && onePercentCountEl){
         onePercentCountEl.textContent = String(Math.floor(info.accounts));
@@ -3077,7 +3092,7 @@ async function primeXahSupplyFromApi({ refreshApprox = true } = {}){
     xahSupplySnapshot = { circulating, fullSupply, accounts, ts: Date.now() };
 
     activeToken.totalSupply = fullSupply;
-  statSupply.textContent = fmtSupplyStat(activeToken, fullSupply);
+    if (statSupply) statSupply.textContent = fmtSupplyStat(activeToken, fullSupply);
     if (supplyMeta) supplyMeta.textContent = `${fmt(circulating)} / ${fmt(fullSupply)} circulating`;
     if (Number.isFinite(accounts) && onePercentCountEl){
       onePercentCountEl.textContent = String(accounts);
@@ -3188,7 +3203,7 @@ function applyTokenToUI(){
     }
   }
 
-  statSupply.textContent = fmtSupplyStat(activeToken, activeToken.totalSupply);
+  if (statSupply) statSupply.textContent = fmtSupplyStat(activeToken, activeToken.totalSupply);
   if (statClubLabelEl){
     statClubLabelEl.textContent = isNativeXahToken(activeToken) ? "Wallet Count" : "1% Club";
   }
