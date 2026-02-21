@@ -46,7 +46,7 @@ window.ONYX_TOKENS = [
     renderLimit: 100,
     cacheTtlSec: 120,
     useIssuerAvatar: false,
-    logoUrl: "./media/emoji-100-gold.svg",
+    logoUrl: "./media/emoji-100-gold-circle.svg",
     logoRounded: false,
     excludeIssuer: false,
     excludedAddresses: [],

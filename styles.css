@@ -346,9 +346,14 @@ select option{
   filter:drop-shadow(0 0 16px rgba(255,45,45,.35));
   transition:transform .18s ease, filter .18s ease;
   cursor:default;
+  transform:translateY(2px);
+}
+.hero h1 .emojiBig .tokenLogoImg{
+  width:1.08em;
+  height:1.08em;
 }
 .hero h1 .emojiBig:hover{
-  transform:rotate(-4deg) scale(1.08);
+  transform:translateY(2px) rotate(-4deg) scale(1.08);
   filter:drop-shadow(0 0 22px rgba(255,213,74,.35));
 }
 .heroSoon{
@@ -1005,6 +1010,13 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
   }
   .hero p{
     font-size:14px;
+  }
+  .heroSoon{
+    display:block;
+    margin-left:0;
+    margin-top:4px;
+    font-size:0.32em;
+    line-height:1.1;
   }
   .ctaRow .btn{
     flex:1 1 calc(50% - 6px);
