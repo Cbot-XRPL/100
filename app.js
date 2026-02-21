@@ -111,6 +111,9 @@ const feedPanel = document.getElementById("feed");
 const richlistPanel = document.getElementById("richlist");
 const heroGrid = document.querySelector(".heroGrid");
 const heroMainCol = heroGrid?.firstElementChild || null;
+const supportWalletBtn = document.getElementById("supportWalletBtn");
+const supportWalletAddress = document.getElementById("supportWalletAddress");
+const SUPPORT_WALLET_FALLBACK = "roNyxrByzJfe7JfhuarRHHDUQsHWZxNAL";
 
 /* ===== FUN: emoji field ===== */
 const EMOJI_COUNT = 42;
@@ -586,6 +589,52 @@ function setBrandLogo(){
     brandEmoji.textContent = "ONYX";
   };
   brandEmoji.appendChild(img);
+}
+function wireSupportWalletButton(){
+  if (!supportWalletBtn) return;
+  supportWalletBtn.addEventListener("click", async () => {
+    const addr = (
+      supportWalletAddress?.textContent ||
+      supportWalletBtn?.textContent ||
+      SUPPORT_WALLET_FALLBACK
+    ).trim();
+    let copied = false;
+    try{
+      await navigator.clipboard.writeText(addr);
+      copied = true;
+    }catch{
+      copied = false;
+    }
+
+    const xamanUrl = "https://xumm.app/detect";
+    try{
+      window.open(xamanUrl, "_blank", "noopener,noreferrer");
+    }catch{
+      // ignore popup-blocker failures
+    }
+
+    showToast(copied ? "Support wallet copied. Opened Xaman." : "Opened Xaman. Support wallet shown in footer.");
+  });
+}
+function hideLegacyPanelIcons(){
+  if (panelEmojiDecent) panelEmojiDecent.style.display = "none";
+  if (panelEmojiFeed) panelEmojiFeed.style.display = "none";
+  if (panelEmojiRich) panelEmojiRich.style.display = "none";
+}
+function setPanelCornerTokenLogo(token){
+  const generatedEmojiLogo =
+    token?.logoMode === "emoji-native" && token?.logo
+      ? getNativeEmojiLogoUrl(token.logo)
+      : "";
+  const logoUrl = generatedEmojiLogo || getTokenLogoUrl(token);
+  if (logoUrl){
+    const safeUrl = String(logoUrl).replace(/"/g, '\\"');
+    document.documentElement.style.setProperty("--panel-token-logo", `url("${safeUrl}")`);
+    document.documentElement.style.setProperty("--panel-token-logo-visible", "1");
+    return;
+  }
+  document.documentElement.style.setProperty("--panel-token-logo", "none");
+  document.documentElement.style.setProperty("--panel-token-logo-visible", "0");
 }
 
 /* ===== Utils ===== */
@@ -3088,9 +3137,8 @@ function applyTokenToUI(){
   setBrandLogo();
   setTokenLogo(heroEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
   setTokenLogo(statEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
-  setTokenLogo(panelEmojiDecent, activeToken, activeToken.logo || "\u{1F5A4}");
-  setTokenLogo(panelEmojiFeed, activeToken, activeToken.logo || "\u{1F5A4}");
-  setTokenLogo(panelEmojiRich, activeToken, activeToken.logo || "\u{1F5A4}");
+  hideLegacyPanelIcons();
+  setPanelCornerTokenLogo(activeToken);
 
   const isOneToken = String(activeToken?.id) === "100";
   heroName.textContent = activeToken.name || activeToken.id;
@@ -3103,7 +3151,7 @@ function applyTokenToUI(){
 
 
 
-  brandSub.textContent = "expermental tools + Dex Culture on Xahau";
+  brandSub.textContent = "Educational tools + DEX Culture on XAHAU";
 
 
   heroDesc.textContent = activeToken.description || "Onyx token.";
@@ -3355,6 +3403,7 @@ if (dexRange1y){
   activeToken = TOKENS.find((t) => String(t.id) === defaultTokenId) || TOKENS[0];
   initTokenSelector();
   wireHeaderOneShortcut();
+  wireSupportWalletButton();
   tokenSelect.value = activeToken.id;
 
   applyTokenToUI();
