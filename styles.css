@@ -106,9 +106,9 @@ header{
 
 .brand{display:flex; align-items:center; gap:12px; user-select:none}
 .brand .logo{
-  width:54px; height:54px;
+  width:58px; height:58px;
   display:flex; align-items:center; justify-content:center;
-  font-size:28px; line-height:1; border-radius:14px;
+  font-size:30px; line-height:1; border-radius:14px;
   background:#000;
   border:1px solid rgba(255,213,74,.55);
   box-shadow:var(--shadow);
@@ -161,7 +161,7 @@ header{
   gap:4px;
 }
 .brand .titles .top{
-  font-weight:800; letter-spacing:.5px; font-size:18px;
+  font-weight:800; letter-spacing:.5px; font-size:19px;
   color:rgba(255,255,255,.85); text-transform:uppercase;
 }
 .brand .titles .tagline{
@@ -172,7 +172,7 @@ header{
   line-height:1.2;
 }
 .brand .titles .sub{
-  font-size:12px;
+  font-size:13px;
   color:rgba(255,255,255,.66);
   font-family:var(--sans);
   font-weight:500;
@@ -331,15 +331,19 @@ select option{
 
 .hero h1{
   margin:0 0 10px;
-  display:flex;
+  width:100%;
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
   align-items:center;
-  gap:10px;
-  flex-wrap:wrap;
+  column-gap:14px;
   font-size:clamp(34px, 6vw, 54px);
   letter-spacing:-1px;
   line-height:1.02;
+  text-align:center;
 }
 .hero h1 .emojiBig{
+  grid-column:1;
+  justify-self:end;
   display:inline-flex;
   align-items:center;
   justify-content:center;
@@ -356,6 +360,10 @@ select option{
   transform:translateY(2px) rotate(-4deg) scale(1.08);
   filter:drop-shadow(0 0 22px rgba(255,213,74,.35));
 }
+.hero h1 #heroName{
+  grid-column:2;
+  text-align:center;
+}
 .heroSoon{
   margin-left:10px;
   font-size:0.36em;
@@ -365,14 +373,17 @@ select option{
   vertical-align:middle;
 }
 .hero p{
-  margin:0 0 14px;
-  color:var(--muted);
+  width:min(68ch, 100%);
   max-width:68ch;
+  margin:0 auto 14px;
+  color:var(--muted);
   font-size:15px;
   line-height:1.45;
+  text-align:center;
 }
 
 .pillRow{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px}
+.token-alt .hero .pillRow{justify-content:center}
 .pill{
   padding:8px 10px;
   border-radius:999px;
@@ -394,6 +405,7 @@ select option{
   }
 }
 .ctaRow{margin-top:14px; margin-bottom:10px; display:flex; gap:10px; flex-wrap:wrap}
+.token-alt .hero .ctaRow{justify-content:center}
 
 .cardRight{
   border-radius:var(--radius);
@@ -422,11 +434,12 @@ select option{
   border-radius:14px;
   border:1px solid rgba(255,255,255,.10);
   background:rgba(255,255,255,.04);
+  text-align:center;
 }
 .stat .k{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.8px}
 .stat .v{font-size:18px; font-weight:800; margin-top:5px}
 .stat .v small{font-size:12px; color:var(--muted); font-weight:600; margin-left:6px}
-.statSupplyRow{display:flex; align-items:center; gap:8px}
+.statSupplyRow{display:flex; align-items:center; justify-content:center; gap:8px}
 .statSupplyRow small{margin-left:0}
 .stat .smallv{font-size:14px; font-weight:800}
 .cardHint{color:var(--muted); font-size:12px; line-height:1.35}
@@ -954,6 +967,15 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
 #toast.show{opacity:1; transform:translateX(-50%) translateY(-2px)}
 
 @media (max-width: 768px){
+  .brand .logo{
+    width:62px;
+    height:62px;
+    font-size:32px;
+  }
+  .hero h1 .emojiBig .tokenLogoImg{
+    width:1.32em;
+    height:1.32em;
+  }
   .wrap{
     padding:16px 12px 28px;
   }
@@ -966,11 +988,11 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
     align-items:center;
   }
   .brand .titles .top{
-    font-size:16px;
+    font-size:18px;
     letter-spacing:.7px;
   }
   .brand .titles .sub{
-    font-size:14px;
+    font-size:15px;
     line-height:1.35;
   }
   header{
@@ -1314,11 +1336,17 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
     justify-content:center;
   }
   .hero h1,
-  .hero p,
-  .pillRow,
-  .ctaRow{
+  .hero p{
     justify-content:center;
     text-align:center;
+  }
+  .token-xah .hero .pillRow{
+    justify-content:center;
+    text-align:center;
+  }
+  .token-xah .hero .ctaRow{
+    justify-content:flex-start;
+    text-align:left;
   }
   .cardHint{
     text-align:center;

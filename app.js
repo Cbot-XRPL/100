@@ -62,7 +62,7 @@ const dataStatusEl = document.getElementById("dataStatus");
 const statPriceUsdEl = document.getElementById("statPriceUsd");
 const onePercentCountEl = document.getElementById("onePercentCount");
 const statClubLabelEl = document.getElementById("statClubLabel");
-const topHolderPctEl = document.getElementById("topHolderPct");
+const marketCapUsdEl = document.getElementById("marketCapUsd");
 const refreshBtn = document.getElementById("refreshBtn");
 const clearCacheBtn = document.getElementById("clearCacheBtn");
 const loadAllBtn = document.getElementById("loadAllBtn");
@@ -179,6 +179,7 @@ const XAH_TEMPLATE_CACHE_KEY = "onyx.xah.template.v2";
 let showAllRows = false;
 let liquidityReqNonce = 0;
 let xahUsdCache = { px: NaN, ts: 0 };
+let heroUsdPrice = NaN;
 const LIQUIDITY_POLL_MS = 15000;
 const LIQUIDITY_MIN_REFRESH_MS = 12000;
 const LIQUIDITY_TIER_PCTS = [0.01, 0.02, 0.05, 0.10, 0.20];
@@ -691,6 +692,23 @@ function setFeedStatus(ok, msg){
 function setHeroUsdPrice(valueText){
   if (!statPriceUsdEl) return;
   statPriceUsdEl.textContent = valueText;
+  const raw = String(valueText == null ? "" : valueText).trim();
+  const parsed = Number(raw.replace(/[^0-9.+-]/g, ""));
+  heroUsdPrice = Number.isFinite(parsed) && parsed > 0 ? parsed : NaN;
+  updateHeroMarketCap(raw);
+}
+function updateHeroMarketCap(priceText){
+  if (!marketCapUsdEl) return;
+  if (String(priceText || "").toLowerCase().includes("loading")){
+    marketCapUsdEl.textContent = "loading...";
+    return;
+  }
+  const supply = Number(activeToken?.totalSupply);
+  if (!Number.isFinite(heroUsdPrice) || heroUsdPrice <= 0 || !Number.isFinite(supply) || supply <= 0){
+    marketCapUsdEl.textContent = "-";
+    return;
+  }
+  marketCapUsdEl.textContent = `$${Math.round(heroUsdPrice * supply).toLocaleString("en-US")}`;
 }
 function setLiquidityMetaText(nextText){
   if (!liqMeta) return;
@@ -2324,11 +2342,7 @@ function computeStats(){
   const clubCount = holders.filter(h => h.balance >= 1).length;
   onePercentCountEl.textContent = clubCount;
 
-  if (holders.length){
-    topHolderPctEl.textContent = pctOfSupply(holders[0].balance).toFixed(2).replace(/0+$/,'').replace(/\.$/,'');
-  } else {
-    topHolderPctEl.textContent = "-";
-  }
+  updateHeroMarketCap(statPriceUsdEl?.textContent || "");
 
   // Whale dominance
   whaleRow.innerHTML = "";
@@ -3132,16 +3146,21 @@ function wireRichlistLazyLoad(){
 function applyTokenToUI(){
   if (!activeToken) return;
   setEmojiFieldForToken(activeToken);
+  const heroLogoToken = activeToken?.heroLogoUrl
+    ? { ...activeToken, logoUrl: activeToken.heroLogoUrl }
+    : activeToken;
 
   document.title = `One Xahau - ${activeToken?.symbol || activeToken?.name || "100"}`;
   setBrandLogo();
-  setTokenLogo(heroEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
-  setTokenLogo(statEmoji, activeToken, activeToken.logo || "\u{1F5A4}");
+  setTokenLogo(heroEmoji, heroLogoToken, activeToken.logo || "\u{1F5A4}");
+  setTokenLogo(statEmoji, heroLogoToken, activeToken.logo || "\u{1F5A4}");
   hideLegacyPanelIcons();
   setPanelCornerTokenLogo(activeToken);
 
   const isOneToken = String(activeToken?.id) === "100";
-  heroName.textContent = activeToken.name || activeToken.id;
+  heroName.textContent = isNativeXahToken(activeToken)
+    ? (activeToken.name || "Xahau")
+    : (activeToken.symbol || activeToken.name || activeToken.id);
   if (isOneToken){
     const soon = document.createElement("span");
     soon.className = "heroSoon";
@@ -3197,6 +3216,8 @@ function applyTokenToUI(){
   footX.textContent = "x.com";
 
   const nativeXah = isNativeXahToken(activeToken);
+  document.body.classList.toggle("token-xah", nativeXah);
+  document.body.classList.toggle("token-alt", !nativeXah);
   btnTrustline.style.display = nativeXah ? "none" : "inline-flex";
   btnTrade.style.display = nativeXah ? "none" : "inline-flex";
   if (btnXahImport){
