@@ -66,6 +66,7 @@ const marketCapUsdEl = document.getElementById("marketCapUsd");
 const refreshBtn = document.getElementById("refreshBtn");
 const clearCacheBtn = document.getElementById("clearCacheBtn");
 const loadAllBtn = document.getElementById("loadAllBtn");
+const downloadCsvBtn = document.getElementById("downloadCsvBtn");
 const xahLoadRichlistBtn = document.getElementById("xahLoadRichlistBtn");
 const xahStatsUpdateBtn = document.getElementById("xahStatsUpdateBtn");
 const chips = Array.from(document.querySelectorAll(".chip[data-filter]"));
@@ -1468,7 +1469,7 @@ function fmtSpreadPctFromBps(spreadBps){
   return `${(spreadBps / 100).toFixed(2)}%`;
 }
 function formatLiquidityProfileLabel(profile){
-  return profile === "commercial" ? "Commerical" : "Alt";
+  return profile === "commercial" ? "Commercial" : "Alt";
 }
 function spreadScoreFromBps(spreadBps, goodBps, badBps){
   if (!Number.isFinite(spreadBps)) return 0;
@@ -2212,6 +2213,68 @@ function filterHolders(list, q, filter){
     out = last ? [last] : [];
   }
   return out;
+}
+function csvEscape(value){
+  const s = String(value ?? "");
+  if (/[",\r\n]/.test(s)){
+    return `"${s.replace(/"/g, "\"\"")}"`;
+  }
+  return s;
+}
+function badgeLabelsFor(holder){
+  const labels = [];
+  const rules = sortBadgesByRequiredQty(
+    getBadgeRules(activeToken).filter((r) => r.row !== false)
+  );
+  for (const rule of rules){
+    if (!holderQualifiesBadge(holder, rule)) continue;
+    labels.push(rule.rowLabel || rule.title || "Badge");
+  }
+  return labels;
+}
+function downloadRichlistCsv(){
+  if (!allHolders.length){
+    showToast("No rich list data to export");
+    return;
+  }
+
+  const q = searchEl.value || "";
+  const filteredList = filterHolders(allHolders, q, activeFilter);
+  if (!filteredList.length){
+    showToast("No filtered rows to export");
+    return;
+  }
+
+  const lastAddress = allHolders[allHolders.length - 1]?.address;
+  const header = ["Rank", "Address", "Balance", "PercentSupply", "Badges"];
+  const lines = [header.map(csvEscape).join(",")];
+
+  for (const h of filteredList){
+    const holder = { ...h, isLast: Boolean(lastAddress && h.address === lastAddress) };
+    const badges = badgeLabelsFor(holder).join(" | ");
+    const row = [
+      holder.rank,
+      holder.address,
+      Number.isFinite(holder.balance) ? holder.balance : 0,
+      Number.isFinite(holder.pct) ? holder.pct.toFixed(6) : "0.000000",
+      badges
+    ];
+    lines.push(row.map(csvEscape).join(","));
+  }
+
+  const csv = "\uFEFF" + lines.join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const tokenId = String(activeToken?.id || "token");
+  const stamp = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `richlist-${tokenId}-${stamp}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast(`CSV downloaded (${filteredList.length} rows)`);
 }
 function renderTable(){
   if (isNativeXahToken(activeToken) && renderedHoldersTokenId !== activeToken?.id){
@@ -3391,6 +3454,9 @@ if (loadAllBtn){
     showAllRows = !showAllRows;
     renderTable();
   });
+}
+if (downloadCsvBtn){
+  downloadCsvBtn.addEventListener("click", () => downloadRichlistCsv());
 }
 feedReconnect.addEventListener("click", () => startFeed());
 if (dexRange7d){
