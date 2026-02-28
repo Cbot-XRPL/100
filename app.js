@@ -69,6 +69,7 @@ const loadAllBtn = document.getElementById("loadAllBtn");
 const downloadCsvBtn = document.getElementById("downloadCsvBtn");
 const xahLoadRichlistBtn = document.getElementById("xahLoadRichlistBtn");
 const xahStatsUpdateBtn = document.getElementById("xahStatsUpdateBtn");
+const xahSupplyUpdateBtn = document.getElementById("xahSupplyUpdateBtn");
 const chips = Array.from(document.querySelectorAll(".chip[data-filter]"));
 
 const whaleRow = document.getElementById("whaleRow");
@@ -206,7 +207,7 @@ let lastLiquidityTokenId = "";
 let xahBitrueSnapshotCache = { ts: 0, snap: null };
 let hasLiquidityDataRendered = false;
 const liquidityFirstLoadShownByToken = new Set();
-let dexChartRangeDays = 7;
+let dexChartRangeDays = 30;
 let dexChartReqNonce = 0;
 const dexChartCache = new Map();
 const XAH_CHART_STORAGE_KEY = "onyx.dexchart.xah.365d.v1";
@@ -2185,8 +2186,17 @@ function applyRowGlow(tr, holder){
 }
 
 /* ===== Richlist rendering ===== */
-function normalizeHolders(list){
-  const sorted = [...list].sort((a,b) => b.balance - a.balance);
+function normalizeHolders(list, token = activeToken){
+  const excluded = getExcludedAddressSet(token);
+  const source = Array.isArray(list) ? list : [];
+  const cleaned = source.filter((h) => {
+    const addr = String(h?.address || "").trim();
+    if (!addr) return false;
+    if (excluded.has(addr)) return false;
+    const bal = Number(h?.balance) || 0;
+    return bal > 0;
+  });
+  const sorted = cleaned.sort((a,b) => b.balance - a.balance);
   return sorted.map((h, idx) => {
     const balance = Number(h.balance) || 0;
     return {
@@ -2459,27 +2469,58 @@ function computeStats(){
     : circulatingRaw;
   supplyMeta.textContent = holders.length ? `${fmt(circulating)} / ${fmt(activeToken.totalSupply)} circulating` : "-";
 
-  const whaleThreshold = activeToken.totalSupply * 0.01;    // >= 1% of total supply
-  const smallThreshold = activeToken.totalSupply * 0.001;   // < 0.1% of total supply
-
-  const whaleSum = holders.reduce((acc, h) => h.balance >= whaleThreshold ? acc + h.balance : acc, 0);
-  const smallSum = holders.reduce((acc, h) => h.balance < smallThreshold ? acc + h.balance : acc, 0);
-  const whaleCount = holders.filter((h) => h.balance >= whaleThreshold).length;
-  const smallCount = holders.filter((h) => h.balance < smallThreshold).length;
-
-  const totals = [
-    { name: "Circulating Supply", sum: circulating, extra: `${holders.length} holders` },
-    { name: "Large Whale Holders", sum: whaleSum, extra: `${whaleCount} wallets (>=1%)` },
-    { name: "Small Holders", sum: smallSum, extra: `${smallCount} wallets (<0.1%)` },
+  const supply = Number(activeToken?.totalSupply);
+  const isPresetCloneAddress = (address) => /^rXahPresetTop/.test(String(address || "").trim());
+  const isSyntheticXahAddress = (address) => /^rXah(?:PresetTop|Template(?:Top)?)/.test(String(address || "").trim());
+  const tierSourceHolders = (isNativeXahToken(activeToken) && xahApproxStatsMode)
+    ? holders.filter((h) => !isPresetCloneAddress(h?.address))
+    : holders;
+  const holderTiers = [
+    { name: "Tier 1 - Megalodon", minPct: 0.5 },
+    { name: "Tier 2 - Whale", minPct: 0.2 },
+    { name: "Tier 3 - Dolphin", minPct: 0.1 },
+    { name: "Tier 4 - Fish", minPct: 0.02 },
+    { name: "Tier 5 - Shrimp", minPct: 0 },
   ];
+
+  const tierBuckets = holderTiers.map((tier, i) => {
+    const upperBoundPct = i === 0 ? Infinity : holderTiers[i - 1].minPct;
+    const minTokens = Number.isFinite(supply) && supply > 0 ? (supply * tier.minPct) / 100 : 0;
+    const rangeLabel = Number.isFinite(upperBoundPct)
+      ? `${tier.minPct.toFixed(2)}-${upperBoundPct.toFixed(2)}%`
+      : `>=${tier.minPct.toFixed(2)}%`;
+    const members = tierSourceHolders.filter((h) => {
+      const pct = Number(h?.pct);
+      if (!Number.isFinite(pct)) return false;
+      return pct >= tier.minPct && pct < upperBoundPct;
+    });
+    const sum = members.reduce((acc, h) => acc + (Number(h?.balance) || 0), 0);
+    const allWallets = members.map((m) => String(m?.address || "").trim()).filter(Boolean);
+    const visibleWallets = allWallets.filter((addr) => !isSyntheticXahAddress(addr));
+    const syntheticCount = allWallets.length - visibleWallets.length;
+    const walletLabel = (xahApproxStatsMode && isNativeXahToken(activeToken) && syntheticCount > 0)
+      ? `${members.length} model wallets`
+      : `${members.length} wallets`;
+    const minTokensText = Math.floor(Math.max(0, Number(minTokens) || 0)).toLocaleString("en-US");
+    return {
+      name: tier.name,
+      sum,
+      extra: `${walletLabel} | Holders With: ${minTokensText}+`,
+      wallets: visibleWallets,
+      syntheticCount,
+    };
+  });
+
+  const totals = tierBuckets;
+  const tierTotal = totals.reduce((acc, b) => acc + (Number(b?.sum) || 0), 0);
 
   bucketList.innerHTML = "";
   for (const b of totals){
-    const pct = activeToken.totalSupply ? (b.sum / activeToken.totalSupply) * 100 : 0;
+    const pct = tierTotal > 0 ? (b.sum / tierTotal) * 100 : 0;
     const card = el("div","bucket");
     const top = el("div","bucketTop");
     top.appendChild(el("div","bucketName", b.name));
-    top.appendChild(el("div","bucketVal", `${fmt(b.sum)} (${pct.toFixed(1)}%)`));
+    top.appendChild(el("div","bucketVal", `${fmt(b.sum)} (${pct.toFixed(2)}%)`));
     card.appendChild(top);
     card.appendChild(el("div","miniNote", b.extra || ""));
 
@@ -2675,7 +2716,7 @@ async function loadHolders({ forceNetwork = false } = {}){
     const cacheFresh = !forceNetwork && cached && cachedAgeMs <= ttlMs;
 
     if (hasCached){
-      allHolders = normalizeHolders(cached.holders);
+      allHolders = normalizeHolders(cached.holders, tokenAtRequest);
       if (allHolders.length) allHolders[allHolders.length - 1].isLast = true;
       renderTable();
       computeStats();
@@ -2722,7 +2763,7 @@ async function loadHolders({ forceNetwork = false } = {}){
         });
 
         if (approx.length){
-          allHolders = normalizeHolders(approx);
+          allHolders = normalizeHolders(approx, tokenAtRequest);
           if (allHolders.length) allHolders[allHolders.length - 1].isLast = true;
           renderTable();
           computeStats();
@@ -2752,14 +2793,14 @@ async function loadHolders({ forceNetwork = false } = {}){
       if (isStale()) return;
       writeRichlistCache(tokenAtRequest, holders);
       writeXahTemplateCache(buildXahTemplateFromLive(holders, info));
-      allHolders = normalizeHolders(holders);
+      allHolders = normalizeHolders(holders, tokenAtRequest);
       if (allHolders.length) allHolders[allHolders.length - 1].isLast = true;
 
       setStatus(true, `live wallets (${holders.length})`);
     }catch{
       if (isStale()) return;
       if (!hasCached){
-        allHolders = normalizeHolders([]);
+        allHolders = normalizeHolders([], tokenAtRequest);
         setStatus(false, "native wallet scan failed");
       } else {
         setStatus(false, "refresh failed, showing cached");
@@ -2778,7 +2819,7 @@ async function loadHolders({ forceNetwork = false } = {}){
   const cacheFresh = !forceNetwork && cached && cachedAgeMs <= ttlMs;
 
   if (hasCached){
-    allHolders = normalizeHolders(cached.holders);
+    allHolders = normalizeHolders(cached.holders, tokenAtRequest);
     if (allHolders.length) allHolders[allHolders.length - 1].isLast = true;
     renderTable();
     computeStats();
@@ -2817,14 +2858,14 @@ async function loadHolders({ forceNetwork = false } = {}){
 
     if (isStale()) return;
     writeRichlistCache(tokenAtRequest, holders);
-    allHolders = normalizeHolders(holders);
+    allHolders = normalizeHolders(holders, tokenAtRequest);
     if (allHolders.length) allHolders[allHolders.length - 1].isLast = true;
 
     setStatus(true, "live data (ledger)");
   }catch{
     if (isStale()) return;
     if (!hasCached){
-      allHolders = normalizeHolders([]);
+      allHolders = normalizeHolders([], tokenAtRequest);
       setStatus(false, "failed (ws)");
     } else {
       setStatus(false, "refresh failed, showing cached");
@@ -3172,7 +3213,7 @@ async function primeXahSupplyFromApi({ refreshApprox = true } = {}){
       });
 
       if (approx.length){
-        allHolders = normalizeHolders(approx);
+        allHolders = normalizeHolders(approx, activeToken);
         if (allHolders.length) allHolders[allHolders.length - 1].isLast = true;
         xahApproxStatsMode = true;
         computeStats();
@@ -3210,15 +3251,19 @@ function wireRichlistLazyLoad(){
       await ensureRichlistLoadedForActiveToken({ reason: "xah-load-click" });
     });
   }
+  const runXahStatsUpdate = async () => {
+    if (!isNativeXahToken(activeToken)) return;
+    setStatus(true, "updating XAH stats...");
+    await primeXahSupplyFromApi({ refreshApprox: true });
+    await ensureRichlistLoadedForActiveToken({ forceNetwork: true, reason: "xah-stats-update" });
+    refreshLiquidityPanel();
+    loadDexChartHistory();
+  };
   if (xahStatsUpdateBtn){
-    xahStatsUpdateBtn.addEventListener("click", async () => {
-      if (!isNativeXahToken(activeToken)) return;
-      setStatus(true, "updating XAH stats...");
-      await primeXahSupplyFromApi({ refreshApprox: true });
-      await ensureRichlistLoadedForActiveToken({ forceNetwork: true, reason: "xah-stats-update" });
-      refreshLiquidityPanel();
-      loadDexChartHistory();
-    });
+    xahStatsUpdateBtn.addEventListener("click", runXahStatsUpdate);
+  }
+  if (xahSupplyUpdateBtn){
+    xahSupplyUpdateBtn.addEventListener("click", runXahStatsUpdate);
   }
 }
 function applyTokenToUI(){
@@ -3320,6 +3365,9 @@ function applyTokenToUI(){
   }
   if (xahStatsUpdateBtn){
     xahStatsUpdateBtn.style.display = nativeXah ? "inline-flex" : "none";
+  }
+  if (xahSupplyUpdateBtn){
+    xahSupplyUpdateBtn.style.display = nativeXah ? "inline-flex" : "none";
   }
 
   if (nativeXah){

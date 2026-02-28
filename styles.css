@@ -794,6 +794,26 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
 }
 .metric .k{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.8px}
 .metric .v{font-size:18px; font-weight:900; margin-top:6px; font-family:var(--mono)}
+.whalePanelBody{
+  display:flex;
+  flex-direction:column;
+}
+.whaleFooter{
+  margin-top:10px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.whaleFooter .miniNote{
+  margin-top:0;
+}
+.whaleUpdateBtn{
+  padding:5px 8px;
+  font-size:11px;
+  line-height:1;
+}
 
 /* Decentralization */
 .bigScore{display:flex; align-items:baseline; gap:12px}
@@ -836,6 +856,32 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
   height:100%;
   border-radius:999px;
   background:linear-gradient(90deg, rgba(255,255,255,.18), var(--accent));
+}
+.bucketDetails{
+  margin-top:8px;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:10px;
+  background:rgba(0,0,0,.16);
+  overflow:hidden;
+}
+.bucketDetailsSummary{
+  cursor:pointer;
+  padding:8px 10px;
+  font-size:12px;
+  color:rgba(255,255,255,.82);
+  user-select:none;
+}
+.bucketWalletList{
+  border-top:1px solid rgba(255,255,255,.08);
+  max-height:170px;
+  overflow:auto;
+}
+.bucketWallet{
+  padding:7px 10px;
+  font-size:12px;
+  font-family:var(--mono);
+  color:rgba(255,255,255,.9);
+  word-break:break-all;
 }
 
 /* Badge cards */

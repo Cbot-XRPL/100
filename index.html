@@ -149,7 +149,10 @@
         </div>
         <div class="panelBody">
           <div class="bucketList" id="bucketList"></div>
-          <div class="miniNote">Compares circulating supply vs large whale holders vs small holders.</div>
+          <div class="whaleFooter">
+            <div class="miniNote">Tiered holder distribution by wallet share of total supply.</div>
+            <button class="chip whaleUpdateBtn" id="xahSupplyUpdateBtn" type="button" style="display:none">Update</button>
+          </div>
         </div>
       </div>
 
@@ -191,11 +194,14 @@
       <div class="panel">
         <div class="panelHead">
           <h2>Whale Dominance</h2>
-          <div class="meta"><span id="whaleMeta">—</span> <button class="chip" id="xahStatsUpdateBtn" type="button" style="display:none">Update</button></div>
+          <div class="meta"><span id="whaleMeta">—</span></div>
         </div>
-        <div class="panelBody">
+        <div class="panelBody whalePanelBody">
           <div class="metricRow" id="whaleRow"></div>
-          <div class="miniNote">Top wallets concentration (by % of supply).</div>
+          <div class="whaleFooter">
+            <div class="miniNote">Top wallets concentration (by % of supply).</div>
+            <button class="chip whaleUpdateBtn" id="xahStatsUpdateBtn" type="button" style="display:none">Update</button>
+          </div>
         </div>
       </div>
       <div class="panel">
@@ -213,8 +219,8 @@
         <div class="panelHead">
           <h2>DEX Price Chart</h2>
           <div class="meta">
-            <button class="chip active" id="dexRange7d" type="button">7D</button>
-            <button class="chip" id="dexRange30d" type="button">30D</button>
+            <button class="chip" id="dexRange7d" type="button">7D</button>
+            <button class="chip active" id="dexRange30d" type="button">30D</button>
             <button class="chip" id="dexRange3m" type="button">3M</button>
             <button class="chip" id="dexRange6m" type="button">6M</button>
             <button class="chip" id="dexRange1y" type="button">1Y</button>
