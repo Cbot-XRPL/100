@@ -177,7 +177,7 @@ const FEED_RENDER_LIMIT = 20;
 const FEED_STORE_LIMIT = 60;
 const DEFAULT_TABLE_RENDER_LIMIT = 100;
 const DEFAULT_RICHLIST_CACHE_TTL_MS = 120000;
-const XAH_TEMPLATE_CACHE_KEY = "onyx.xah.template.v2";
+const XAH_TEMPLATE_CACHE_KEY = "onyx.xah.template.v3";
 let showAllRows = false;
 let liquidityReqNonce = 0;
 let xahUsdCache = { px: NaN, ts: 0 };
@@ -299,60 +299,105 @@ function buildXahApproxHolders({ circulating, fullSupply, accounts, topHolders =
 
   const full = Number(fullSupply);
   const pctBase = Number.isFinite(full) && full > 0 ? full : circ;
+  const syntheticPrefix = "rXahModel";
 
   // Targets tuned to live XAH distribution (Top1/3/5/10/25/50).
   const presetTopPercents = [
-    3.28,
-    2.25, 2.12,
-    1.75, 1.63,
-    1.10, 1.02, 0.90, 0.86, 0.84,
-    0.50, 0.48, 0.47, 0.46, 0.45, 0.44, 0.43, 0.42, 0.41, 0.40,
-    0.40, 0.39, 0.38, 0.38, 0.37,
-    0.22, 0.21, 0.21, 0.20, 0.20,
-    0.20, 0.19, 0.19, 0.18, 0.18,
-    0.18, 0.18, 0.18, 0.17, 0.17,
-    0.17, 0.17, 0.17, 0.17, 0.17,
-    0.17, 0.17, 0.17, 0.17, 0.16
+    3.28, 2.21, 2.16, 1.72, 1.65, 1.00, 0.96, 0.94, 0.92, 0.90,
+    0.50, 0.50, 0.50, 0.47, 0.46, 0.45, 0.44, 0.44, 0.43, 0.43, 0.43, 0.42, 0.41, 0.36, 0.35,
+    0.31, 0.30, 0.29, 0.28, 0.27, 0.26, 0.25, 0.24, 0.23, 0.22, 0.21, 0.20, 0.19, 0.18, 0.17,
+    0.16, 0.15, 0.14, 0.13, 0.10, 0.09, 0.07, 0.06, 0.05, 0.04
   ];
   const presetTopHolders = presetTopPercents.map((pct, i) => ({
-    address: `rXahPresetTop${String(i + 1).padStart(6, "0")}`,
+    address: `${syntheticPrefix}${String(i + 1).padStart(6, "0")}`,
     balance: pctBase * (pct / 100)
   }));
 
   const sanitizedTop = (Array.isArray(topHolders) ? topHolders : [])
     .map((h, i) => ({
-      address: String(h?.address || `rXahTemplateTop${String(i + 1).padStart(6, "0")}`),
+      address: String(h?.address || `${syntheticPrefix}${String(i + 1).padStart(6, "0")}`),
       balance: Number(h?.balance) || 0
     }))
     .filter((h) => h.balance > 0);
   const seededTop = sanitizedTop.length ? sanitizedTop : presetTopHolders;
+  // Model against the non-treasury circulating slice so preset distribution
+  // stays aligned with observed loaded baseline.
+  const modeledCirculating = circ * 0.459;
 
   const holderEstimate = Number.isFinite(Number(accounts)) && Number(accounts) > 0
     ? Math.floor(Number(accounts))
     : 12000;
   const targetCount = Math.max(seededTop.length + 4000, Math.min(30000, holderEstimate));
   const topSum = seededTop.reduce((acc, h) => acc + h.balance, 0);
-  const normalizedTop = topSum > circ
-    ? seededTop.map((h) => ({ ...h, balance: (h.balance / topSum) * circ }))
+  const normalizedTop = topSum > modeledCirculating
+    ? seededTop.map((h) => ({ ...h, balance: (h.balance / topSum) * modeledCirculating }))
     : seededTop;
   const normalizedTopSum = normalizedTop.reduce((acc, h) => acc + h.balance, 0);
-  const tailSupply = Math.max(0, circ - normalizedTopSum);
+  const tailSupply = Math.max(0, modeledCirculating - normalizedTopSum);
   const tailCount = Math.max(0, targetCount - normalizedTop.length);
   if (!tailCount || tailSupply <= 0) return normalizedTop;
 
   const out = [...normalizedTop];
+  const syntheticOffset = out.filter((h) => String(h?.address || "").startsWith(syntheticPrefix)).length;
+  const tailOffset = 9;
+  const tailExponent = 0.92;
   let weightSum = 0;
   for (let i = 0; i < tailCount; i++){
-    weightSum += 1 / Math.pow(i + 16, 1.07);
+    weightSum += 1 / Math.pow(i + tailOffset, tailExponent);
   }
   if (weightSum <= 0) return out;
 
   for (let i = 0; i < tailCount; i++){
-    const weight = 1 / Math.pow(i + 16, 1.07);
+    const weight = 1 / Math.pow(i + tailOffset, tailExponent);
     out.push({
-      address: `rXahTemplate${String(i + 1).padStart(6, "0")}`,
+      address: `${syntheticPrefix}${String(syntheticOffset + i + 1).padStart(6, "0")}`,
       balance: (tailSupply * weight) / weightSum
     });
+  }
+  if (!sanitizedTop.length){
+    const tierTargets = [
+      { minPct: 0.5, maxPct: Infinity, target: 0.5062 }, // Megalodon
+      { minPct: 0.2, maxPct: 0.5, target: 0.1839 },      // Whale
+      { minPct: 0.1, maxPct: 0.2, target: 0.0826 },      // Dolphin
+      { minPct: 0.01, maxPct: 0.1, target: 0.1490 },     // Fish
+      { minPct: 0, maxPct: 0.01, target: 0.0783 },       // Shrimp
+    ];
+    const totalBefore = out.reduce((acc, h) => acc + (Number(h?.balance) || 0), 0);
+    if (totalBefore > 0 && Number.isFinite(pctBase) && pctBase > 0){
+      for (const t of tierTargets){
+        const minBal = pctBase * (t.minPct / 100);
+        const maxBal = Number.isFinite(t.maxPct) ? pctBase * (t.maxPct / 100) : Infinity;
+        const idxs = [];
+        let currentSum = 0;
+        for (let i = 0; i < out.length; i++){
+          const bal = Number(out[i]?.balance) || 0;
+          const pct = (bal / pctBase) * 100;
+          if (!Number.isFinite(pct) || pct < t.minPct || pct >= t.maxPct) continue;
+          idxs.push(i);
+          currentSum += bal;
+        }
+        if (!idxs.length || currentSum <= 0) continue;
+        const desired = totalBefore * t.target;
+        const scale = desired / currentSum;
+        for (const i of idxs){
+          let bal = (Number(out[i]?.balance) || 0) * scale;
+          if (bal < minBal){
+            bal = minBal * 1.0001;
+          }
+          if (Number.isFinite(maxBal) && bal >= maxBal){
+            bal = maxBal * 0.9999;
+          }
+          out[i].balance = bal;
+        }
+      }
+      const totalAfter = out.reduce((acc, h) => acc + (Number(h?.balance) || 0), 0);
+      if (totalAfter > 0){
+        const rescale = totalBefore / totalAfter;
+        for (const h of out){
+          h.balance = (Number(h?.balance) || 0) * rescale;
+        }
+      }
+    }
   }
   return out;
 }
@@ -362,9 +407,7 @@ function buildXahTemplateFromLive(holders, supplyInfo){
     .map((h) => ({ address: h.address, balance: Number(h.balance) || 0 }))
     .filter((h) => h.balance > 0);
   const circulatingLive = holders.reduce((acc, h) => acc + (Number(h.balance) || 0), 0);
-  const circulating = Number.isFinite(Number(supplyInfo?.circulating)) && Number(supplyInfo.circulating) > 0
-    ? Number(supplyInfo.circulating)
-    : circulatingLive;
+  const circulating = circulatingLive;
   const accounts = Number.isFinite(Number(supplyInfo?.accounts)) && Number(supplyInfo.accounts) > 0
     ? Math.floor(Number(supplyInfo.accounts))
     : holders.length;
@@ -2470,8 +2513,11 @@ function computeStats(){
   supplyMeta.textContent = holders.length ? `${fmt(circulating)} / ${fmt(activeToken.totalSupply)} circulating` : "-";
 
   const supply = Number(activeToken?.totalSupply);
-  const isPresetCloneAddress = (address) => /^rXahPresetTop/.test(String(address || "").trim());
-  const isSyntheticXahAddress = (address) => /^rXah(?:PresetTop|Template(?:Top)?)/.test(String(address || "").trim());
+  const isPresetCloneAddress = (address) => {
+    const v = String(address || "").trim();
+    return v === "rXahPresetTop000001" || v === "rXahPresetTop000002" || v === "rXahPresetTop000003";
+  };
+  const isSyntheticXahAddress = (address) => /^rXah(?:Model|PresetTop|Template(?:Top)?)/.test(String(address || "").trim());
   const tierSourceHolders = (isNativeXahToken(activeToken) && xahApproxStatsMode)
     ? holders.filter((h) => !isPresetCloneAddress(h?.address))
     : holders;
@@ -2479,37 +2525,84 @@ function computeStats(){
     { name: "Tier 1 - Megalodon", minPct: 0.5 },
     { name: "Tier 2 - Whale", minPct: 0.2 },
     { name: "Tier 3 - Dolphin", minPct: 0.1 },
-    { name: "Tier 4 - Fish", minPct: 0.02 },
+    { name: "Tier 4 - Fish", minPct: 0.01 },
     { name: "Tier 5 - Shrimp", minPct: 0 },
   ];
 
-  const tierBuckets = holderTiers.map((tier, i) => {
-    const upperBoundPct = i === 0 ? Infinity : holderTiers[i - 1].minPct;
-    const minTokens = Number.isFinite(supply) && supply > 0 ? (supply * tier.minPct) / 100 : 0;
-    const rangeLabel = Number.isFinite(upperBoundPct)
-      ? `${tier.minPct.toFixed(2)}-${upperBoundPct.toFixed(2)}%`
-      : `>=${tier.minPct.toFixed(2)}%`;
-    const members = tierSourceHolders.filter((h) => {
-      const pct = Number(h?.pct);
-      if (!Number.isFinite(pct)) return false;
-      return pct >= tier.minPct && pct < upperBoundPct;
+  const useXahPresetBreakdown = isNativeXahToken(activeToken) && xahApproxStatsMode;
+  const tierBuckets = useXahPresetBreakdown
+    ? (() => {
+      const basePcts = [50.62, 18.39, 8.26, 14.90, 7.83];
+      const baseWalletCounts = [13, 19, 19, 178, 201875];
+      const baseCirculating = 490244118.4334;
+      const baseAccounts = 202122;
+      const observed = holderTiers.map((tier, i) => {
+        const upperBoundPct = i === 0 ? Infinity : holderTiers[i - 1].minPct;
+        const members = tierSourceHolders.filter((h) => {
+          const pct = Number(h?.pct);
+          if (!Number.isFinite(pct)) return false;
+          return pct >= tier.minPct && pct < upperBoundPct;
+        });
+        const sum = members.reduce((acc, h) => acc + (Number(h?.balance) || 0), 0);
+        return { sum, count: members.length };
+      });
+      const observedTotal = observed.reduce((acc, o) => acc + (Number(o?.sum) || 0), 0);
+      const circRatio = Number.isFinite(circulating) && circulating > 0 ? (circulating / baseCirculating) : 1;
+      const accountRatio = Number.isFinite(xahSupplySnapshot.accounts) && xahSupplySnapshot.accounts > 0
+        ? (xahSupplySnapshot.accounts / baseAccounts)
+        : 1;
+      const driftWeight = clamp(
+        0.22 + Math.abs(circRatio - 1) * 0.75 + Math.abs(accountRatio - 1) * 0.45,
+        0.18,
+        0.72
+      );
+      const rawPcts = holderTiers.map((_, i) => {
+        const observedPct = observedTotal > 0 ? ((observed[i].sum / observedTotal) * 100) : basePcts[i];
+        return (basePcts[i] * (1 - driftWeight)) + (observedPct * driftWeight);
+      });
+      const rawPctSum = rawPcts.reduce((acc, p) => acc + (Number(p) || 0), 0);
+      const pctNormFactor = rawPctSum > 0 ? (100 / rawPctSum) : 1;
+      const walletScale = clamp((accountRatio * 0.7) + (circRatio * 0.3), 0.75, 1.35);
+
+      return holderTiers.map((tier, i) => {
+        const minTokens = Number.isFinite(supply) && supply > 0 ? (supply * tier.minPct) / 100 : 0;
+        const minTokensText = Math.floor(Math.max(0, Number(minTokens) || 0)).toLocaleString("en-US");
+        const pct = (rawPcts[i] || 0) * pctNormFactor;
+        const blendedCount = ((baseWalletCounts[i] || 0) * (1 - driftWeight)) + ((observed[i]?.count || 0) * driftWeight);
+        const walletCount = Math.max(1, Math.round(blendedCount * walletScale));
+        return {
+          name: tier.name,
+          sum: circulating * (pct / 100),
+          extra: `${walletCount.toLocaleString("en-US")} model wallets | Holders With: ${minTokensText}+`,
+          wallets: [],
+          syntheticCount: 0,
+        };
+      });
+    })()
+    : holderTiers.map((tier, i) => {
+      const upperBoundPct = i === 0 ? Infinity : holderTiers[i - 1].minPct;
+      const minTokens = Number.isFinite(supply) && supply > 0 ? (supply * tier.minPct) / 100 : 0;
+      const members = tierSourceHolders.filter((h) => {
+        const pct = Number(h?.pct);
+        if (!Number.isFinite(pct)) return false;
+        return pct >= tier.minPct && pct < upperBoundPct;
+      });
+      const sum = members.reduce((acc, h) => acc + (Number(h?.balance) || 0), 0);
+      const allWallets = members.map((m) => String(m?.address || "").trim()).filter(Boolean);
+      const visibleWallets = allWallets.filter((addr) => !isSyntheticXahAddress(addr));
+      const syntheticCount = allWallets.length - visibleWallets.length;
+      const walletLabel = (xahApproxStatsMode && isNativeXahToken(activeToken) && syntheticCount > 0)
+        ? `${members.length} model wallets`
+        : `${members.length} wallets`;
+      const minTokensText = Math.floor(Math.max(0, Number(minTokens) || 0)).toLocaleString("en-US");
+      return {
+        name: tier.name,
+        sum,
+        extra: `${walletLabel} | Holders With: ${minTokensText}+`,
+        wallets: visibleWallets,
+        syntheticCount,
+      };
     });
-    const sum = members.reduce((acc, h) => acc + (Number(h?.balance) || 0), 0);
-    const allWallets = members.map((m) => String(m?.address || "").trim()).filter(Boolean);
-    const visibleWallets = allWallets.filter((addr) => !isSyntheticXahAddress(addr));
-    const syntheticCount = allWallets.length - visibleWallets.length;
-    const walletLabel = (xahApproxStatsMode && isNativeXahToken(activeToken) && syntheticCount > 0)
-      ? `${members.length} model wallets`
-      : `${members.length} wallets`;
-    const minTokensText = Math.floor(Math.max(0, Number(minTokens) || 0)).toLocaleString("en-US");
-    return {
-      name: tier.name,
-      sum,
-      extra: `${walletLabel} | Holders With: ${minTokensText}+`,
-      wallets: visibleWallets,
-      syntheticCount,
-    };
-  });
 
   const totals = tierBuckets;
   const tierTotal = totals.reduce((acc, b) => acc + (Number(b?.sum) || 0), 0);
@@ -2756,10 +2849,12 @@ async function loadHolders({ forceNetwork = false } = {}){
       if (!hasCached){
         const tpl = readXahTemplateCache();
         const approx = buildXahApproxHolders({
-          circulating: Number.isFinite(info.circulating) && info.circulating > 0 ? info.circulating : tpl?.circulating,
+          circulating: Number.isFinite(Number(tpl?.circulating)) && Number(tpl.circulating) > 0
+            ? Number(tpl.circulating)
+            : (Number.isFinite(info.circulating) && info.circulating > 0 ? info.circulating : NaN),
           fullSupply: Number.isFinite(info.fullSupply) && info.fullSupply > 0 ? info.fullSupply : activeToken?.totalSupply,
           accounts: Number.isFinite(info.accounts) && info.accounts > 0 ? info.accounts : tpl?.accounts,
-          topHolders: Array.isArray(tpl?.topHolders) ? tpl.topHolders : []
+          topHolders: []
         });
 
         if (approx.length){
@@ -3205,11 +3300,14 @@ async function primeXahSupplyFromApi({ refreshApprox = true } = {}){
     if (refreshApprox){
       updateLoadBarTask(supplyTaskId, { label: "Building XAH approximate distribution...", target: 74 });
       const tpl = readXahTemplateCache();
+      const approxCirculating = Number.isFinite(Number(tpl?.circulating)) && Number(tpl.circulating) > 0
+        ? Number(tpl.circulating)
+        : circulating;
       const approx = buildXahApproxHolders({
-        circulating,
+        circulating: approxCirculating,
         fullSupply,
         accounts,
-        topHolders: Array.isArray(tpl?.topHolders) ? tpl.topHolders : []
+        topHolders: []
       });
 
       if (approx.length){
